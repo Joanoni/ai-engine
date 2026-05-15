@@ -1,0 +1,77 @@
+{
+  "customModes": [
+    {
+      "slug": "architect",
+      "name": "Architect",
+      "description": "Strategic planning and system architecture focus.",
+      "roleDefinition": " ",
+      "groups": [
+        "read",
+        "edit",
+        "command",
+        "mcp",
+        "browser"
+      ],
+      "whenToUse": "Use for project analysis and creating detailed action plans.",
+      "customInstructions": ""
+    },
+    {
+      "slug": "code",
+      "name": "Code",
+      "description": "Technical implementation and code writing focus.",
+      "roleDefinition": " ",
+      "groups": [
+        "read",
+        "edit",
+        "command",
+        "mcp",
+        "browser"
+      ],
+      "whenToUse": "Use for writing code and performing technical tasks.",
+      "customInstructions": ""
+    },
+    {
+      "slug": "ask",
+      "name": "Ask",
+      "description": "Theoretical inquiries and concept clarification.",
+      "roleDefinition": " ",
+      "groups": [
+        "read",
+        "command",
+        "mcp",
+        "browser"
+      ],
+      "whenToUse": "Never use this mode.",
+      "customInstructions": ""
+    },
+    {
+      "slug": "debug",
+      "name": "Debug",
+      "description": "Fault diagnosis and bug fixing.",
+      "roleDefinition": " ",
+      "groups": [
+        "read",
+        "edit",
+        "command",
+        "mcp",
+        "browser"
+      ],
+      "whenToUse": "Never use this mode.",
+      "customInstructions": ""
+    },
+    {
+      "slug": "orchestrator",
+      "name": "Orchestrator",
+      "description": "Task coordination across multiple modes.",
+      "roleDefinition": " ",
+      "groups": [
+        "read",
+        "command",
+        "mcp",
+        "browser"
+      ],
+      "whenToUse": "Never use this mode.",
+      "customInstructions": ""
+    }
+  ]
+}

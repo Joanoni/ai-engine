@@ -1,0 +1,30 @@
+# Go
+*.exe
+*.test
+*.out
+/vendor/
+
+# Frontend
+frontend/dist/
+frontend/node_modules/
+
+# Build output
+bin/
+
+# Example workspaces (not committed)
+projects/
+
+# Personal folder
+00_caio/
+
+# Playwright CLI cache
+.playwright-cli/
+
+# Runtime workspace data (generated at runtime, contains secrets)
+.ai-engine/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
