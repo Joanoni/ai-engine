@@ -120,6 +120,13 @@ type Request struct {
 	Tools        []ToolDefinition
 }
 
+// TokenUsage holds the token consumption for a single LLM call.
+type TokenUsage struct {
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	Model        string `json:"model"`
+}
+
 // Response is the payload returned by an LLM provider.
 type Response struct {
 	// Text is the assistant's text reply, if any.
@@ -128,6 +135,8 @@ type Response struct {
 	ToolCalls []ToolCall
 	// StopReason indicates why the model stopped generating.
 	StopReason string
+	// Usage holds the token consumption for this call.
+	Usage TokenUsage
 }
 
 // LLMProvider is the abstraction over any LLM backend.

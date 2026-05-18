@@ -2,7 +2,7 @@
 
 ## Status
 
-🟢 Phase 4 (partial) complete — engine operational with logging, retry, 3-layer prompts, graceful shutdown, and agent graph frontend.
+🟢 Phase 4 complete — engine operational. Binary v0.0.12. Agent graph fully functional with custom glassmorphism nodes (`LeaderNode`, `ExecutorNode`), animated edges with dual particles and glow halo, correct node type mapping from `/agents` endpoint, and dynamic `fitView` centering.
 
 ---
 

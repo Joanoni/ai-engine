@@ -60,7 +60,7 @@ if not exist "%LATEST_DIR%" mkdir "%LATEST_DIR%"
 
 :: ── Build Go binary ───────────────────────────────────────────────────────────
 echo [2/3] Building Go binary...
-go build -o "%OUT_DIR%\ai-engine.exe" ./cmd/ai-engine
+go build -ldflags "-X main.Version=%NEW_VERSION%" -o "%OUT_DIR%\ai-engine.exe" ./cmd/ai-engine
 if errorlevel 1 (
     echo [ERROR] Go build failed.
     exit /b 1

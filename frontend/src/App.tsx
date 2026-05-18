@@ -1,53 +1,164 @@
-import { useState } from 'react';
-import './App.css';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
+import type { EngineEvent } from './types/events';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAgentGraph } from './hooks/useAgentGraph';
-import { PromptInput } from './components/PromptInput';
-import { EventFeed } from './components/EventFeed';
-import { AgentGraph } from './components/AgentGraph';
+import { useSessionHistory } from './hooks/useSessionHistory';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useAnalytics } from './hooks/useAnalytics';
+import { Sidebar } from './components/layout/Sidebar';
+import { CockpitArea } from './components/layout/CockpitArea';
+import { MissionPanel } from './components/layout/MissionPanel';
+import { AgentDetailDrawer } from './components/drawers/AgentDetailDrawer';
+import { AnalyticsPanel } from './components/analytics/AnalyticsPanel';
+import './App.css';
 
-function App() {
-  const { events, isConnected, isRunning, sendMessage, clearEvents } = useWebSocket();
+export default function App() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [replayEvents, setReplayEvents] = useState<EngineEvent[] | null>(null);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+
+  const {
+    events: wsEvents,
+    isConnected,
+    isRunning,
+    connectionStatus,
+    latency,
+    sessionStartTime,
+    sendMessage,
+    clearEvents,
+  } = useWebSocket();
+
+  const {
+    sessions,
+    activeSessionId,
+    setActiveSessionId,
+    loadSessionEvents,
+    refreshSessions,
+  } = useSessionHistory();
+
+  const { sessionLogs, loadingLogs, loadSessionLogs, clearSessionLogs } = useAnalytics();
+
+  // Use replay events if a past session is loaded, otherwise live events
+  const events: EngineEvent[] = replayEvents ?? wsEvents;
+
   const { nodes, edges } = useAgentGraph(events);
-  const [feedVisible, setFeedVisible] = useState(true);
+
+  // Refresh session list on terminal WebSocket events
+  useEffect(() => {
+    const last = wsEvents[wsEvents.length - 1];
+    if (!last) return;
+    if (last.type === 'session.started') {
+      setTimeout(refreshSessions, 300);
+    } else if (last.type === 'session.finished' || last.type === 'error') {
+      setTimeout(refreshSessions, 500);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsEvents.length]);
+
+  const handleSend = useCallback(
+    (text: string) => {
+      setReplayEvents(null); // exit replay mode
+      sendMessage(text);
+      setTimeout(refreshSessions, 500);
+    },
+    [sendMessage, refreshSessions]
+  );
+
+  const handleNewMission = useCallback(() => {
+    clearEvents();
+    setActiveSessionId(null);
+    setReplayEvents(null);
+    setSelectedAgent(null);
+    setShowAnalytics(false);
+  }, [clearEvents, setActiveSessionId]);
+
+  const handleLoadSession = useCallback(async (id: string) => {
+    const evts = await loadSessionEvents(id);
+    setReplayEvents(evts);
+    setActiveSessionId(id);
+    setSelectedAgent(null);
+    setShowAnalytics(false);
+  }, [loadSessionEvents, setActiveSessionId]);
+
+  const handleNodeClick = useCallback((agentName: string) => {
+    setSelectedAgent(agentName);
+  }, []);
+
+  const handleCloseDrawer = useCallback(() => {
+    setSelectedAgent(null);
+  }, []);
+
+  const handleClearEvents = useCallback(() => {
+    clearEvents();
+    setReplayEvents(null);
+  }, [clearEvents]);
+
+  const handleToggleAnalytics = useCallback(() => {
+    setShowAnalytics((prev) => {
+      if (prev) clearSessionLogs();
+      return !prev;
+    });
+  }, [clearSessionLogs]);
+
+  const shortcuts = useMemo(
+    () => ({
+      'ctrl+b': () => setSidebarCollapsed((prev) => !prev),
+      'ctrl+shift+a': () => handleToggleAnalytics(),
+      escape: () => setSelectedAgent(null),
+    }),
+    [handleToggleAnalytics]
+  );
+
+  useKeyboardShortcuts(shortcuts);
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>AI Engine</h1>
-        <div className="connection-status">
-          <span className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`} />
-          <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
-        </div>
-        {!isRunning && events.length > 0 && (
-          <button className="clear-btn" onClick={clearEvents}>
-            Clear
-          </button>
+    <ReactFlowProvider>
+      <div className="app-layout">
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onNewMission={handleNewMission}
+          onLoadSession={handleLoadSession}
+          onToggleAnalytics={handleToggleAnalytics}
+          showAnalytics={showAnalytics}
+        />
+
+        {showAnalytics ? (
+          <AnalyticsPanel
+            sessions={sessions}
+            loadSessionLogs={loadSessionLogs}
+            sessionLogs={sessionLogs}
+            loadingLogs={loadingLogs}
+          />
+        ) : (
+          <CockpitArea
+            nodes={nodes}
+            edges={edges}
+            events={events}
+            onNodeClick={handleNodeClick}
+            onClearEvents={handleClearEvents}
+          />
         )}
-        <button
-          className="toggle-feed-btn"
-          onClick={() => setFeedVisible((v) => !v)}
-          title={feedVisible ? 'Hide event feed' : 'Show event feed'}
-        >
-          {feedVisible ? 'Hide Feed' : 'Show Feed'}
-        </button>
-      </header>
 
-      <main className="app-main">
-        <ReactFlowProvider>
-          <AgentGraph nodes={nodes} edges={edges} />
-        </ReactFlowProvider>
-        <div className={`feed-panel${feedVisible ? '' : ' feed-panel--hidden'}`}>
-          <EventFeed events={events} />
-        </div>
-      </main>
+        <MissionPanel
+          events={events}
+          isConnected={isConnected}
+          isRunning={isRunning}
+          connectionStatus={connectionStatus}
+          latency={latency}
+          sessionStartTime={sessionStartTime}
+          onSend={handleSend}
+        />
 
-      <footer className="app-footer">
-        <PromptInput onSend={sendMessage} disabled={isRunning} />
-      </footer>
-    </div>
+        <AgentDetailDrawer
+          agent={selectedAgent}
+          events={events}
+          onClose={handleCloseDrawer}
+        />
+      </div>
+    </ReactFlowProvider>
   );
 }
-
-export default App;

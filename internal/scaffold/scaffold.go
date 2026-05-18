@@ -21,6 +21,30 @@ const configJSON = `{
 }
 `
 
+const modelPricingJSON = `{
+  "claude-sonnet-4-5": {
+    "input_per_million": 3.00,
+    "output_per_million": 15.00,
+    "currency": "USD"
+  },
+  "claude-sonnet-4-6": {
+    "input_per_million": 3.00,
+    "output_per_million": 15.00,
+    "currency": "USD"
+  },
+  "claude-opus-4": {
+    "input_per_million": 15.00,
+    "output_per_million": 75.00,
+    "currency": "USD"
+  },
+  "claude-haiku-3-5": {
+    "input_per_million": 0.80,
+    "output_per_million": 4.00,
+    "currency": "USD"
+  }
+}
+`
+
 const dotEnv = `ANTHROPIC_API_KEY=
 `
 
@@ -42,8 +66,9 @@ func Init(dir string) error {
 
 	// Files to write from inline content.
 	inlineFiles := map[string]string{
-		filepath.Join(base, "config.json"): configJSON,
-		filepath.Join(base, ".env"):        dotEnv,
+		filepath.Join(base, "config.json"):        configJSON,
+		filepath.Join(base, ".env"):               dotEnv,
+		filepath.Join(base, "model-pricing.json"): modelPricingJSON,
 	}
 	for path, content := range inlineFiles {
 		if err := writeNew(path, []byte(content)); err != nil {

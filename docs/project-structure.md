@@ -2,7 +2,7 @@
 
 ## Status
 
-🟢 Phase 4 (partial) complete — full stack operational with logging, retry, 3-layer prompts, and graceful shutdown.
+🟢 Phase 4 complete — full stack operational. Binary v0.0.12. Agent graph fully functional with custom glassmorphism nodes, animated edges, correct node type mapping, and dynamic fitView centering.
 
 ---
 
@@ -59,7 +59,10 @@ ai-engine/                          # Repository root
 │   │   └── delete_file.go          # delete_file tool (executor)
 │   │
 │   ├── sandbox/
-│   │   └── sandbox.go              # Workspace Sandbox — resolves agent paths to workspace
+│   │   ├── sandbox.go              # Workspace Sandbox — resolves agent paths to workspace
+│   │   ├── shell.go                # Shell — persistent cmd.exe/sh process per agent execution
+│   │   ├── shell_windows.go        # Windows Job Object — kills entire process tree on close
+│   │   └── shell_unix.go           # Unix stubs (no-op; Unix kills process group via SIGKILL)
 │   │
 │   ├── session/
 │   │   └── session.go              # Session Manager — creates/tracks sessions
@@ -77,21 +80,44 @@ ai-engine/                          # Repository root
 │   └── server/
 │       └── server.go               # WebSocket + HTTP server — handles connections and routing
 │
-├── frontend/                       # React + TypeScript SPA (Phase 3 + Phase 4)
+├── frontend/                       # React + TypeScript SPA — Frontend v2 "Mission Control" (branch frontend-v2-test2)
 │   ├── src/
 │   │   ├── main.tsx                # Vite entry point
-│   │   ├── App.tsx                 # Root component
+│   │   ├── App.tsx                 # Root component — 3-column layout, keyboard shortcuts, ReactFlowProvider
+│   │   ├── App.css                 # Minimal layout-only styles
+│   │   ├── index.css               # CSS variables, global reset, keyframe animations
 │   │   ├── components/
-│   │   │   ├── PromptInput.tsx     # Textarea + Send button
-│   │   │   ├── EventFeed.tsx       # Scrollable real-time event log
-│   │   │   ├── AgentGraph.tsx      # React Flow canvas — renders agent tree nodes and edges
-│   │   │   └── AgentGraphNode.tsx  # Custom node — status badge (L/E), label, pulse animation
+│   │   │   ├── layout/
+│   │   │   │   ├── Sidebar.tsx         # Collapsible sidebar — session history + New Mission
+│   │   │   │   ├── CockpitArea.tsx     # Center area — graph + resize handle + terminal
+│   │   │   │   ├── MissionPanel.tsx    # Right panel — all mission controls
+│   │   │   │   └── ResizeHandle.tsx    # Drag handle for vertical split
+│   │   │   ├── graph/
+│   │   │   │   ├── AgentGraph.tsx      # React Flow canvas — dot grid, MiniMap, Controls
+│   │   │   │   ├── LeaderNode.tsx      # Custom node — glassmorphism, hexagonal badge, glow
+│   │   │   │   ├── ExecutorNode.tsx    # Custom node — pill shape, circular badge
+│   │   │   │   └── AnimatedEdge.tsx    # Custom edge — SVG particle animation
+│   │   │   ├── terminal/
+│   │   │   │   ├── LiveTerminal.tsx    # Terminal panel — scanline, auto-scroll, export .jsonl
+│   │   │   │   └── TerminalLine.tsx    # Single terminal line — color-coded by event type
+│   │   │   ├── mission/
+│   │   │   │   ├── PromptEditor.tsx    # Auto-resize textarea, Ctrl+Enter to submit
+│   │   │   │   ├── LaunchButton.tsx    # Countdown 3→2→1→🚀 before firing
+│   │   │   │   ├── TaskProgress.tsx    # Markdown checklist parser + progress bar
+│   │   │   │   ├── AgentRoster.tsx     # Live agent list with status + tool call count
+│   │   │   │   └── QuickStats.tsx      # Tool calls, agents, live duration counter
+│   │   │   └── drawers/
+│   │   │       └── AgentDetailDrawer.tsx  # Slide-in drawer — per-agent event timeline
 │   │   ├── hooks/
-│   │   │   ├── useWebSocket.ts     # WebSocket connection hook
-│   │   │   └── useAgentGraph.ts    # Derives { nodes, edges } from EngineEvent[] (pure, dagre layout)
+│   │   │   ├── useWebSocket.ts         # WebSocket + auto-reconnect + latency + sessionStartTime
+│   │   │   ├── useAgentGraph.ts        # Derives { nodes, edges } from EngineEvent[] (dagre layout)
+│   │   │   ├── useSessionHistory.ts    # localStorage session persistence (max 20)
+│   │   │   ├── useResizable.ts         # Drag-to-resize vertical split ratio
+│   │   │   └── useKeyboardShortcuts.ts # Global keyboard shortcuts (Ctrl+B, Escape)
 │   │   └── types/
-│   │       ├── events.ts           # TypeScript types for engine events
-│   │       └── graph.ts            # AgentNode, AgentEdge, AgentStatus, AgentType
+│   │       ├── events.ts               # TypeScript types for engine events
+│   │       ├── graph.ts                # AgentNode, AgentEdge, AgentStatus, AgentType
+│   │       └── session.ts              # SessionRecord for localStorage persistence
 │   ├── index.html
 │   ├── package.json
 │   ├── tsconfig.json
@@ -111,11 +137,26 @@ ai-engine/                          # Repository root
     │   ├── .ai-engine/             # Engine config, agent definitions, runtime data
     │   ├── backend/                # Go REST API (generated by agents)
     │   └── frontend/               # HTML frontend (generated by agents)
-    └── notes-app/                  # Notes app — second example workspace
-        ├── ai-engine.exe
-        ├── .ai-engine/
-        ├── backend/
-        └── frontend/
+    ├── notes-app/                  # Notes app — second example workspace
+    │   ├── ai-engine.exe
+    │   ├── .ai-engine/
+    │   ├── backend/
+    │   └── frontend/
+    ├── quiz-app/                   # Quiz App — multiple-choice quiz with scoring and leaderboard
+    │   ├── ai-engine.exe           # Binary v0.0.1+
+    │   ├── .ai-engine/             # Config: claude-sonnet-4-6, port 8080, max_tool_calls 60
+    │   ├── backend/                # Go REST API port 8082 — questions, sessions, leaderboard
+    │   └── frontend/               # Single-file HTML — start screen, quiz flow, result, leaderboard
+    ├── expense-tracker/            # Expense Tracker — personal finance tracker (binary v0.0.4, Frontend v2)
+    │   ├── ai-engine.exe           # Binary v0.0.4 with Frontend v2 "Mission Control" embedded
+    │   ├── .ai-engine/             # Config: claude-sonnet-4-6, port 8080, max_tool_calls 60
+    │   ├── backend/                # Go REST API port 8083 — expenses CRUD + summary by category
+    │   └── frontend/               # Single-file HTML — dark UI, expense form, filter, CSS bar chart
+    └── kanban-board/               # Kanban Board — drag-and-drop task manager (binary v0.0.14, 4-level hierarchy)
+        ├── ai-engine.exe           # Binary v0.0.14
+        ├── .ai-engine/             # Config: claude-sonnet-4-6, port 8080, max_tool_calls 60
+        ├── backend/                # Go REST API port 8081 — cards CRUD + move between columns
+        └── frontend/               # Single-file HTML — dark UI, three columns, drag-and-drop
 ```
 
 ---
@@ -180,6 +221,14 @@ Executor tool set: `run_terminal_command`, `list_files`, `read_file`, `write_fil
 
 ### `internal/sandbox`
 Wraps all filesystem and terminal operations. Receives a path or command from an agent (relative), prepends the workspace absolute path, and executes. Prevents path traversal attacks (e.g., `../../etc/passwd`).
+
+### `internal/sandbox` — Shell
+
+`shell.go` defines the `Shell` type: a persistent `cmd.exe` (Windows) or `sh` (Unix) process that stays alive for the duration of a single agent execution. All `run_terminal_command` calls within an agent share the same shell process, so working directory and environment variables are preserved between calls.
+
+On Windows, `shell_windows.go` creates a **Windows Job Object** (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) and assigns the shell process to it. When `Shell.Close()` is called (or the timeout kills the shell), the OS automatically terminates all child processes in the job tree — including background processes started with `&`. This eliminates the orphan process problem that caused ports to remain occupied after timeout.
+
+On Unix, `shell_unix.go` provides no-op stubs — Unix already kills the process group correctly via `SIGKILL` when the parent is killed.
 
 ### `internal/session`
 Creates sessions with unique IDs (UUID v4). Tracks active sessions. Each session holds a reference to its root agent chat.

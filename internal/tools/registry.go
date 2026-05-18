@@ -26,12 +26,14 @@ type Registry struct {
 //
 // Parameters:
 //   - sb        : sandbox for filesystem operations (executor tools)
+//   - shell     : persistent shell for run_terminal_command (may be nil; inject later via SetShell)
 //   - bus       : event bus for publishing events (leader tools)
 //   - reg       : agent registry for loading sub-agent definitions (create_chat)
 //   - runAgent  : factory function that runs a sub-agent (injected to avoid circular import)
 //   - sessionID : current session identifier (leader tools)
 func NewRegistry(
 	sb *sandbox.Sandbox,
+	shell *sandbox.Shell,
 	bus *events.Bus,
 	reg *registry.Registry,
 	runAgent SubAgentRunner,
@@ -40,7 +42,7 @@ func NewRegistry(
 	r := &Registry{tools: make(map[string]Tool)}
 
 	// Register executor tools.
-	r.register(NewRunTerminalCommand(sb))
+	r.register(NewRunTerminalCommand(shell))
 	r.register(NewListFiles(sb))
 	r.register(NewReadFile(sb))
 	r.register(NewWriteFile(sb))
@@ -58,6 +60,16 @@ func NewRegistry(
 	r.register(NewSetTaskContext(sb, bus, sessionID))
 
 	return r
+}
+
+// SetShell injects the persistent shell into the RunTerminalCommand tool.
+// Must be called before the agent starts executing tool calls.
+func (r *Registry) SetShell(shell *sandbox.Shell) {
+	if t, ok := r.tools["run_terminal_command"]; ok {
+		if rtc, ok := t.(*RunTerminalCommand); ok {
+			rtc.shell = shell
+		}
+	}
 }
 
 func (r *Registry) register(t Tool) {
