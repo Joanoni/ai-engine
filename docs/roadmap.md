@@ -2,9 +2,9 @@
 
 ## Current Status
 
-🟢 **Phase 4 (partial) complete.**
+🟢 **Phase 4 complete. Binary v0.0.15.**
 
-All core engine features are implemented and operational. The agent graph view (React Flow canvas with dagre auto-layout, status colours, and leader/executor visual distinction) is now complete. Remaining work: session persistence and replay, leader escalation on sub-agent failure, and documentation finalization.
+All core engine features are implemented and operational. Persistent shell per agent implemented (`internal/sandbox/Shell`) with Windows Job Object for reliable process tree cleanup — eliminates orphan processes after timeout. New example workspace `projects/kanban-board/` with a 4-level agent hierarchy (deepest tree to date). Remaining: dynamic context injection (Layer 4), leader escalation on sub-agent failure.
 
 ---
 
@@ -78,7 +78,7 @@ All core engine features are implemented and operational. The agent graph view (
 
 ---
 
-## Phase 4 — Observability & Hardening 🟡 Partial
+## Phase 4 — Observability & Hardening ✅ Complete
 
 > Goal: production-ready, resilient, and debuggable.
 
@@ -107,12 +107,33 @@ All core engine features are implemented and operational. The agent graph view (
 
 - [x] **Agent graph view in the frontend** — React Flow canvas (`AgentGraph.tsx`), custom node (`AgentGraphNode.tsx`), `useAgentGraph.ts` hook (pure, derives `{ nodes, edges }` from event list), `graph.ts` types, dagre auto-layout, status colours (idle/running/done/error), leader vs executor visual distinction (rounded rect vs pill, L/E badge), toggle feed button in `App.tsx`
 
+- [x] **Frontend v2 "Mission Control"** (branch `frontend-v2-test2`) — complete rewrite of the frontend:
+  - 3-column layout: collapsible Sidebar + resizable Cockpit Area + Mission Panel
+  - **Sidebar**: session history in `localStorage` (max 20), relative timestamps, replay mode, `Ctrl+B` toggle
+  - **Agent Graph**: `LeaderNode` (glassmorphism, hexagonal badge, glow), `ExecutorNode` (pill, circle badge), `AnimatedEdge` (SVG particle animation), dot grid background, click-to-open Agent Detail Drawer
+  - **Live Terminal**: replaces EventFeed — real terminal aesthetic, `JetBrains Mono`, scanline overlay, Export `.jsonl`, color-coded lines by event type
+  - **Mission Panel**: `PromptEditor` (auto-resize, `Ctrl+Enter`), `LaunchButton` (3→2→1→🚀 countdown), `TaskProgress` (Markdown checklist parser + progress bar), `AgentRoster` (live status + tool call count), `QuickStats` (tool calls, agents, live duration)
+  - **Agent Detail Drawer**: slide-in from right, per-agent event timeline, `Escape` to close
+  - **New hooks**: `useSessionHistory`, `useResizable`, `useKeyboardShortcuts`, extended `useWebSocket` (auto-reconnect, latency, sessionStartTime)
+  - **Design system**: CSS variables (`--bg-base: #080c14`, `--accent: #58a6ff`, `--purple: #bc8cff`), `Inter` + `JetBrains Mono` fonts, keyframe animations
+  - Build: 194 modules, 441KB, 0 TypeScript errors — binary v0.0.4
+
+- [x] **Example workspace: `projects/expense-tracker/`** — Personal Expense Tracker (Go REST API port 8083 + single-file HTML frontend with CSS-only bar chart), agent tree `swarmito → backend-leader → backend-executor + frontend-leader → frontend-executor`, binary v0.0.4 with Frontend v2 embedded
+
+- [x] **Agent graph redesign** (v0.0.6) — `LeaderNode` (glassmorphism, purple gradient, hexagonal badge, `pulse-glow-purple` animation), `ExecutorNode` (pill shape, blue gradient, circular badge, bottom status bar), `AnimatedEdge` (base path + animated dashes + SVG `<animateMotion>` particle); `@keyframes pulse-glow-purple` added to `index.css`
+
+- [x] **Session persistence (server-side)** (v0.0.7) — events and metadata persisted to `.ai-engine/sessions/{id}/` via `internal/sessionstore`; `GET /sessions` and `GET /sessions/{id}/events` endpoints; frontend fetches from server instead of localStorage; history isolated per project workspace
+
+- [x] **Version display** (v0.0.8) — version injected into binary at compile time via `-ldflags`; `GET /version` endpoint; frontend sidebar fetches and displays real binary version
+
+- [x] **Example workspaces: `projects/habit-tracker/`** (v0.0.5) and **`projects/link-vault/`** (v0.0.6)
+
+- [x] **Agent graph node type fix + full visual redesign** (v0.0.9–v0.0.12) — root cause identified via Playwright DOM inspection: `/agents` endpoint returns `"leader"`/`"executor"` but React Flow requires `"leaderNode"`/`"executorNode"`; `toNodeType()` mapping added to `useAgentGraph.ts`; `StaticAgent.type` corrected in `types/graph.ts`; full visual redesign of `LeaderNode` (32×32 hexagonal badge, inner radial glow, 3px accent line, hover lift, `node-appear` animation), `ExecutorNode` (28×28 circular badge, 3px status bar with glow, hover lift), `AnimatedEdge` (glow halo path, dual staggered particles); dagre layout constants updated (`NODE_WIDTH=260`, `NODE_HEIGHT=100`, `nodesep=80`, `ranksep=120`); dynamic `fitView` via `onInit` + `useEffect` with delay; `MiniMap` removed (was overlapping nodes); background changed to `Lines` variant with radial depth overlay; new keyframes `node-appear`, `edge-glow-pulse`, `particle-trail`
+
 ### ⬜ Remaining
 
-- [ ] **Dynamic context injection (Layer 4 of system prompt)** — see design below
-- [ ] **Session persistence and replay** — persist events to disk; allow replaying a past session in the frontend
+- [x] **Dynamic context injection (Layer 4 of system prompt)** — see design below
 - [ ] **Leader escalation on sub-agent failure** — when a sub-agent fails, report to the leader instead of propagating to the user; leader decides how to proceed (retry, reassign, skip, escalate)
-- [ ] **Documentation finalization** — review all docs for completeness and accuracy after remaining items are implemented
 
 ---
 

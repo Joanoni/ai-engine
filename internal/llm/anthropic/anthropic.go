@@ -82,6 +82,11 @@ func (p *Provider) Send(ctx context.Context, req llm.Request) (llm.Response, err
 	// Parse the response.
 	var resp llm.Response
 	resp.StopReason = string(msg.StopReason)
+	resp.Usage = llm.TokenUsage{
+		InputTokens:  int(msg.Usage.InputTokens),
+		OutputTokens: int(msg.Usage.OutputTokens),
+		Model:        string(msg.Model),
+	}
 
 	for _, block := range msg.Content {
 		switch block.Type {

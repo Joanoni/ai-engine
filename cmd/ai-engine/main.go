@@ -18,7 +18,12 @@ import (
 	"github.com/swarmit/ai-engine/internal/scaffold"
 	"github.com/swarmit/ai-engine/internal/server"
 	"github.com/swarmit/ai-engine/internal/session"
+	"github.com/swarmit/ai-engine/internal/sessionstore"
+	"github.com/swarmit/ai-engine/internal/tokenstore"
 )
+
+// Version is set at build time via -ldflags "-X main.Version=x.y.z"
+var Version = "dev"
 
 func main() {
 	// Workspace is the current working directory.
@@ -103,6 +108,7 @@ func runServer(workspacePath string) {
 	fmt.Printf("  Model     : %s\n", cfg.DefaultModel)
 	fmt.Printf("  Root agent: %s\n", cfg.RootAgent)
 	fmt.Printf("  Port      : %d\n", cfg.Port)
+	fmt.Printf("  Version   : %s\n", Version)
 
 	// 6. Strip the "frontend/dist" prefix so files are served at /.
 	distFS, err := fs.Sub(aiengine.Files, "frontend/dist")
@@ -110,9 +116,15 @@ func runServer(workspacePath string) {
 		log.Fatalf("Failed to create sub FS: %v", err)
 	}
 
-	// 7. Create and start the WebSocket server with all dependencies.
+	// 7. Create session store for disk persistence.
+	store := sessionstore.New(workspacePath)
+
+	// 8. Create token store for token usage tracking.
+	tokenStore := tokenstore.New(workspacePath)
+
+	// 9. Create and start the WebSocket server with all dependencies.
 	// tools.Registry and agent.Runner are created per-session inside the server handler.
-	srv := server.New(cfg.Port, sessionMgr, bus, reg, sb, provider, distFS)
+	srv := server.New(cfg.Port, sessionMgr, bus, reg, sb, provider, distFS, store, tokenStore, Version)
 
 	// Set up context that cancels on OS signal.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

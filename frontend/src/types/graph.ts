@@ -1,9 +1,9 @@
 export type AgentStatus = 'idle' | 'running' | 'done' | 'error';
-export type AgentType = 'leader' | 'executor';
+export type AgentType = 'leaderNode' | 'executorNode';
 
 export interface StaticAgent {
   name: string;
-  type: AgentType;
+  type: 'leader' | 'executor';
   team: string[];
 }
 
@@ -16,7 +16,7 @@ export interface AgentNodeData extends Record<string, unknown> {
 
 export interface AgentNode {
   id: string;
-  type: 'agentNode';
+  type: AgentType;
   data: AgentNodeData;
   position: { x: number; y: number };
 }
@@ -26,4 +26,5 @@ export interface AgentEdge {
   source: string;
   target: string;
   animated: boolean;
+  type?: string;
 }

@@ -2,17 +2,21 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/swarmit/ai-engine/internal/chatlog"
+	"github.com/swarmit/ai-engine/internal/dyncontext"
 	"github.com/swarmit/ai-engine/internal/events"
 	"github.com/swarmit/ai-engine/internal/llm"
 	"github.com/swarmit/ai-engine/internal/sandbox"
+	"github.com/swarmit/ai-engine/internal/tokenstore"
 	"github.com/swarmit/ai-engine/internal/tools"
 )
 
@@ -29,10 +33,12 @@ type Runner struct {
 	logger         *chatlog.Logger
 	maxToolRetries int
 	maxToolCalls   int
+	tokenStore     *tokenstore.Store
+	dynCtxRegistry *dyncontext.Registry
 }
 
 // NewRunner creates a new Runner for the given agent with all required dependencies.
-func NewRunner(a *Agent, provider llm.LLMProvider, toolRegistry *tools.Registry, bus *events.Bus, engineContext string, sb *sandbox.Sandbox, maxToolRetries int, maxToolCalls int) *Runner {
+func NewRunner(a *Agent, provider llm.LLMProvider, toolRegistry *tools.Registry, bus *events.Bus, engineContext string, sb *sandbox.Sandbox, maxToolRetries int, maxToolCalls int, tokenStore *tokenstore.Store, dynCtxRegistry *dyncontext.Registry) *Runner {
 	logger := chatlog.NewLogger(sb.WorkspacePath(), a.SessionID, a.Definition.Name)
 	return &Runner{
 		agent:          a,
@@ -45,19 +51,27 @@ func NewRunner(a *Agent, provider llm.LLMProvider, toolRegistry *tools.Registry,
 		logger:         logger,
 		maxToolRetries: maxToolRetries,
 		maxToolCalls:   maxToolCalls,
+		tokenStore:     tokenStore,
+		dynCtxRegistry: dynCtxRegistry,
 	}
 }
 
-// composeSystemPrompt builds the final 3-layer system prompt:
+// composeSystemPrompt builds the final 4-layer system prompt:
 //
 //	[1] ENGINE CONTEXT  (optional prefix)
+//	[4] DYNAMIC CONTEXT (optional, injected between Layer 1 and Layer 2)
 //	[2] AGENT ROLE      (always present)
 //	[3] CURRENT TASK    (optional suffix)
-func composeSystemPrompt(engineCtx, agentRole, taskCtx string) string {
+func composeSystemPrompt(engineCtx, dynamicCtx, agentRole, taskCtx string) string {
 	var b strings.Builder
 
 	if engineCtx != "" {
 		b.WriteString(engineCtx)
+		b.WriteString("\n\n---\n\n")
+	}
+
+	if dynamicCtx != "" {
+		b.WriteString(dynamicCtx)
 		b.WriteString("\n\n---\n\n")
 	}
 
@@ -77,9 +91,30 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 	agentName := r.agent.Definition.Name
 	sessionID := r.agent.SessionID
 
+	// Start the persistent shell for this agent's execution.
+	shell, err := sandbox.NewShell(r.sb.WorkspacePath())
+	if err != nil {
+		return "", fmt.Errorf("runner: failed to start shell: %w", err)
+	}
+	defer shell.Close()
+
+	// Inject the shell into the RunTerminalCommand tool.
+	r.tools.SetShell(shell)
+
 	// Open the chat log; errors are non-fatal (already logged internally).
 	_ = r.logger.Open()
 	defer r.logger.Close()
+
+	// Write agent_init entry — metadata about this agent execution.
+	r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Turn:      0,
+		Role:      "agent_init",
+		AgentName: agentName,
+		AgentType: string(r.agent.Definition.Type),
+		SessionID: sessionID,
+		Model:     r.agent.Definition.Model,
+	})
 
 	r.bus.Publish(events.Event{
 		Type:      events.EventTypeAgentStarted,
@@ -127,8 +162,36 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 		// Increment turn counter at the start of each LLM call iteration.
 		turn++
 
-		// Compose the 3-layer system prompt on every LLM call.
-		systemPrompt := composeSystemPrompt(r.engineContext, r.agent.Definition.SystemPrompt, r.agent.Definition.TaskContext)
+		// Compute dynamic context (Layer 4) on every LLM call so it reflects
+		// any filesystem changes made by tools during execution.
+		dynamicCtx := ""
+		if r.dynCtxRegistry != nil {
+			dynamicCtx = r.dynCtxRegistry.RenderAll(ctx, r.sb)
+		}
+
+		// Compose the 4-layer system prompt on every LLM call.
+		systemPrompt := composeSystemPrompt(r.engineContext, dynamicCtx, r.agent.Definition.SystemPrompt, r.agent.Definition.TaskContext)
+
+		// Log the full LLM request before sending.
+		msgs := r.chat.Messages()
+		r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Turn:      turn,
+			Role:      "llm_request",
+			Model:     r.agent.Definition.Model,
+			SystemPrompt: systemPrompt,
+			SystemLayers: &chatlog.SystemLayers{
+				EngineContext:  r.engineContext,
+				DynamicContext: dynamicCtx,
+				AgentRole:      r.agent.Definition.SystemPrompt,
+				TaskContext:    r.agent.Definition.TaskContext,
+			},
+			Messages:            toMessageLog(msgs),
+			Tools:               toToolLog(toolDefs),
+			MessageCount:        len(msgs),
+			TotalToolCallsSoFar: totalToolCalls,
+			ConsecutiveErrors:   consecutiveErrors,
+		})
 
 		req := llm.Request{
 			Model:        r.agent.Definition.Model,
@@ -138,12 +201,24 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 		}
 
 		resp, err := r.provider.Send(ctx, req)
+		if err == nil && r.tokenStore != nil {
+			if addErr := r.tokenStore.AddUsage(sessionID, resp.Usage.Model, resp.Usage.InputTokens, resp.Usage.OutputTokens); addErr != nil {
+				log.Printf("runner: failed to record token usage: %v", addErr)
+			}
+		}
 		if err != nil {
 			r.bus.Publish(events.Event{
 				Type:      events.EventTypeError,
 				SessionID: sessionID,
 				AgentName: agentName,
 				Payload:   map[string]string{"error": err.Error()},
+			})
+			// Log llm_response with error stop reason before the error entry.
+			r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
+				Timestamp:  time.Now().UTC().Format(time.RFC3339),
+				Turn:       turn,
+				Role:       "llm_response",
+				StopReason: "error",
 			})
 			r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
 				Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -154,21 +229,16 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 			return "", fmt.Errorf("runner: LLM call failed: %w", err)
 		}
 
-		// Build ToolCalls slice for logging.
-		var toolCallEntries []chatlog.ToolCallEntry
-		for _, tc := range resp.ToolCalls {
-			toolCallEntries = append(toolCallEntries, chatlog.ToolCallEntry{
-				ID:    tc.ID,
-				Name:  tc.Name,
-				Input: tc.Input,
-			})
-		}
+		// Log the full LLM response.
 		r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Turn:      turn,
-			Role:      "assistant",
-			Text:      resp.Text,
-			ToolCalls: toolCallEntries,
+			Timestamp:    time.Now().UTC().Format(time.RFC3339),
+			Turn:         turn,
+			Role:         "llm_response",
+			Text:         resp.Text,
+			ToolCalls:    toToolCallEntries(resp.ToolCalls),
+			StopReason:   resp.StopReason,
+			InputTokens:  resp.Usage.InputTokens,
+			OutputTokens: resp.Usage.OutputTokens,
 		})
 
 		// No tool calls — the model returned a plain text response.
@@ -217,7 +287,9 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 				return "", fmt.Errorf("runner: unknown tool %q: %w", call.Name, err)
 			}
 
+			start := time.Now()
 			result, execErr := tool.Execute(ctx, call.Input)
+			durationMs := time.Since(start).Milliseconds()
 
 			if errors.Is(execErr, tools.ErrFinishWork) {
 				// Clean stop — record the result and break out of tool loop.
@@ -226,13 +298,14 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 
 				success := true
 				r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
-					Timestamp: time.Now().UTC().Format(time.RFC3339),
-					Turn:      turn,
-					Role:      "tool_result",
-					ToolUseID: call.ID,
-					Tool:      call.Name,
-					Success:   &success,
-					Output:    result,
+					Timestamp:  time.Now().UTC().Format(time.RFC3339),
+					Turn:       turn,
+					Role:       "tool_result",
+					ToolUseID:  call.ID,
+					Tool:       call.Name,
+					Success:    &success,
+					Output:     result,
+					DurationMs: durationMs,
 				})
 
 				toolResults = append(toolResults, llm.ToolResult{
@@ -251,61 +324,63 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 			}
 
 			if execErr != nil {
-					// Publish error event for frontend observability.
-					r.bus.Publish(events.Event{
-						Type:      events.EventTypeError,
-						SessionID: sessionID,
-						AgentName: agentName,
-						Payload:   map[string]string{"error": execErr.Error(), "tool": call.Name},
-					})
-	
-					// Log the failure.
-					failure := false
-					r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
-						Timestamp: time.Now().UTC().Format(time.RFC3339),
-						Turn:      turn,
-						Role:      "tool_result",
-						ToolUseID: call.ID,
-						Tool:      call.Name,
-						Success:   &failure,
-						Output:    execErr.Error(),
-					})
-					r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
-						Timestamp: time.Now().UTC().Format(time.RFC3339),
-						Turn:      turn,
-						Role:      "error",
-						Tool:      call.Name,
-						Message:   execErr.Error(),
-					})
-	
-					// Feed the error back to the agent as a tool result.
-					toolResults = append(toolResults, llm.ToolResult{
-						ToolUseID: call.ID,
-						Content:   fmt.Sprintf("Tool error: %s", execErr.Error()),
-						IsError:   true,
-					})
-	
-					consecutiveErrors++
-					if consecutiveErrors >= r.maxToolRetries {
-						// Exceeded retry limit — terminate.
-						return "", fmt.Errorf("runner: tool %q failed %d consecutive times, last error: %w", call.Name, consecutiveErrors, execErr)
-					}
-					// Do NOT break — continue processing remaining tool calls in this batch.
-					continue
+				// Publish error event for frontend observability.
+				r.bus.Publish(events.Event{
+					Type:      events.EventTypeError,
+					SessionID: sessionID,
+					AgentName: agentName,
+					Payload:   map[string]string{"error": execErr.Error(), "tool": call.Name},
+				})
+
+				// Log the failure.
+				failure := false
+				r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
+					Timestamp:  time.Now().UTC().Format(time.RFC3339),
+					Turn:       turn,
+					Role:       "tool_result",
+					ToolUseID:  call.ID,
+					Tool:       call.Name,
+					Success:    &failure,
+					Output:     execErr.Error(),
+					DurationMs: durationMs,
+				})
+				r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
+					Timestamp: time.Now().UTC().Format(time.RFC3339),
+					Turn:      turn,
+					Role:      "error",
+					Tool:      call.Name,
+					Message:   execErr.Error(),
+				})
+
+				// Feed the error back to the agent as a tool result.
+				toolResults = append(toolResults, llm.ToolResult{
+					ToolUseID: call.ID,
+					Content:   fmt.Sprintf("Tool error: %s", execErr.Error()),
+					IsError:   true,
+				})
+
+				consecutiveErrors++
+				if consecutiveErrors >= r.maxToolRetries {
+					// Exceeded retry limit — terminate.
+					return "", fmt.Errorf("runner: tool %q failed %d consecutive times, last error: %w", call.Name, consecutiveErrors, execErr)
 				}
-	
-				// Tool succeeded — reset consecutive error counter.
-				consecutiveErrors = 0
-	
-				success := true
+				// Do NOT break — continue processing remaining tool calls in this batch.
+				continue
+			}
+
+			// Tool succeeded — reset consecutive error counter.
+			consecutiveErrors = 0
+
+			success := true
 			r.logger.WriteEntry(chatlog.LogEntry{ //nolint:errcheck
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Turn:      turn,
-				Role:      "tool_result",
-				ToolUseID: call.ID,
-				Tool:      call.Name,
-				Success:   &success,
-				Output:    result,
+				Timestamp:  time.Now().UTC().Format(time.RFC3339),
+				Turn:       turn,
+				Role:       "tool_result",
+				ToolUseID:  call.ID,
+				Tool:       call.Name,
+				Success:    &success,
+				Output:     result,
+				DurationMs: durationMs,
 			})
 
 			toolResults = append(toolResults, llm.ToolResult{
@@ -389,4 +464,70 @@ func (r *Runner) archiveTaskContext(sessionID, agentName string) {
 		}
 		_ = os.Remove(srcAbs)
 	}
+}
+
+// toMessageLog converts a slice of llm.Message to []chatlog.MessageLog for serialization.
+func toMessageLog(msgs []llm.Message) []chatlog.MessageLog {
+	out := make([]chatlog.MessageLog, 0, len(msgs))
+	for _, m := range msgs {
+		ml := chatlog.MessageLog{
+			Role:    string(m.Role),
+			Content: make([]chatlog.ContentLog, 0, len(m.Content)),
+		}
+		for _, cb := range m.Content {
+			cl := chatlog.ContentLog{
+				Type: string(cb.Type),
+			}
+			switch cb.Type {
+			case llm.ContentBlockTypeText:
+				cl.Text = cb.Text
+			case llm.ContentBlockTypeToolUse:
+				cl.ID = cb.ToolUseID
+				cl.Name = cb.ToolName
+				cl.Input = json.RawMessage(cb.ToolInput)
+			case llm.ContentBlockTypeToolResult:
+				cl.ToolUseID = cb.ToolResultID
+				cl.Content = cb.ToolResultContent
+				cl.IsError = cb.IsError
+			}
+			ml.Content = append(ml.Content, cl)
+		}
+		out = append(out, ml)
+	}
+	return out
+}
+
+// toToolLog converts a slice of llm.ToolDefinition to []chatlog.ToolLog for serialization.
+func toToolLog(defs []llm.ToolDefinition) []chatlog.ToolLog {
+	out := make([]chatlog.ToolLog, 0, len(defs))
+	for _, d := range defs {
+		var schemaBytes json.RawMessage
+		if d.InputSchema != nil {
+			if b, err := json.Marshal(d.InputSchema); err == nil {
+				schemaBytes = b
+			}
+		}
+		out = append(out, chatlog.ToolLog{
+			Name:        d.Name,
+			Description: d.Description,
+			InputSchema: schemaBytes,
+		})
+	}
+	return out
+}
+
+// toToolCallEntries converts a slice of llm.ToolCall to []chatlog.ToolCallEntry for serialization.
+func toToolCallEntries(calls []llm.ToolCall) []chatlog.ToolCallEntry {
+	if len(calls) == 0 {
+		return nil
+	}
+	out := make([]chatlog.ToolCallEntry, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, chatlog.ToolCallEntry{
+			ID:    c.ID,
+			Name:  c.Name,
+			Input: json.RawMessage(c.Input),
+		})
+	}
+	return out
 }

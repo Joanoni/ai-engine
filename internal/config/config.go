@@ -8,14 +8,21 @@ import (
 	"strings"
 )
 
+// DynamicContextConfig controls which dynamic context providers are active.
+// If Providers is empty, all registered providers are enabled by default.
+type DynamicContextConfig struct {
+	Providers []string `json:"providers"`
+}
+
 // Config holds the global engine settings parsed from .ai-engine/config.json.
 type Config struct {
-	Provider       string `json:"provider"`
-	DefaultModel   string `json:"default_model"`
-	RootAgent      string `json:"root_agent"`
-	Port           int    `json:"port"`
-	MaxToolRetries int    `json:"max_tool_retries"`
-	MaxToolCalls   int    `json:"max_tool_calls"`
+	Provider       string               `json:"provider"`
+	DefaultModel   string               `json:"default_model"`
+	RootAgent      string               `json:"root_agent"`
+	Port           int                  `json:"port"`
+	MaxToolRetries int                  `json:"max_tool_retries"`
+	MaxToolCalls   int                  `json:"max_tool_calls"`
+	DynamicContext DynamicContextConfig `json:"dynamic_context"`
 }
 
 // Load reads and parses .ai-engine/config.json from the given workspace path.

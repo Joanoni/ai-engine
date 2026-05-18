@@ -74,6 +74,7 @@ Detailed documentation is organized by topic inside the [`docs/`](./docs/) folde
 | [`docs/frontend.md`](./docs/frontend.md) | Frontend spec: React + TypeScript SPA, components, WebSocket protocol |
 | [`docs/roadmap.md`](./docs/roadmap.md) | Full development roadmap — completed phases, current status, remaining work |
 | [`docs/changelog.md`](./docs/changelog.md) | Release history — changes per version |
+| [`docs/analytics.md`](./docs/analytics.md) | Analytics BI Panel — architecture, components, endpoints, types, bug history |
 
 ---
 

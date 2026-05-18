@@ -3,13 +3,13 @@ import dagre from '@dagrejs/dagre';
 import type { EngineEvent } from '../types/events';
 import type { AgentNode, AgentEdge, AgentStatus, AgentType, StaticAgent } from '../types/graph';
 
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 60;
+const NODE_WIDTH = 260;
+const NODE_HEIGHT = 100;
 
 function applyDagreLayout(nodes: AgentNode[], edges: AgentEdge[]): AgentNode[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 });
+  g.setGraph({ rankdir: 'TB', nodesep: 80, ranksep: 120 });
 
   nodes.forEach((node) => {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
@@ -35,10 +35,21 @@ function applyDagreLayout(nodes: AgentNode[], edges: AgentEdge[]): AgentNode[] {
 
 function inferAgentType(agentName: string): AgentType {
   const lower = agentName.toLowerCase();
-  if (lower.includes('leader') || lower.includes('orchestrat') || lower.includes('manager')) {
-    return 'leader';
+  if (
+    lower.includes('leader') ||
+    lower.includes('orchestrat') ||
+    lower.includes('manager') ||
+    lower.includes('swarmito')
+  ) {
+    return 'leaderNode';
   }
-  return 'executor';
+  return 'executorNode';
+}
+
+function toNodeType(apiType: string): AgentType {
+  if (apiType === 'leader') return 'leaderNode';
+  if (apiType === 'executor') return 'executorNode';
+  return inferAgentType(apiType);
 }
 
 export function useAgentGraph(events: EngineEvent[]): { nodes: AgentNode[]; edges: AgentEdge[] } {
@@ -63,19 +74,21 @@ export function useAgentGraph(events: EngineEvent[]): { nodes: AgentNode[]; edge
 
     function upsertNode(id: string, patch: Partial<AgentNode['data']>) {
       const existing = nodeMap.get(id);
+      const agentType = patch.agentType ?? inferAgentType(id);
       if (existing) {
         nodeMap.set(id, {
           ...existing,
+          type: patch.agentType ?? existing.type,
           data: { ...existing.data, ...patch },
         });
       } else {
         nodeMap.set(id, {
           id,
-          type: 'agentNode',
+          type: agentType,
           position: { x: 0, y: 0 },
           data: {
             label: id,
-            agentType: inferAgentType(id),
+            agentType,
             status: 'idle',
             ...patch,
           },
@@ -85,7 +98,13 @@ export function useAgentGraph(events: EngineEvent[]): { nodes: AgentNode[]; edge
 
     function upsertEdge(source: string, target: string, animated: boolean) {
       const edgeId = `${source}->${target}`;
-      edgeMap.set(edgeId, { id: edgeId, source, target, animated });
+      edgeMap.set(edgeId, {
+        id: edgeId,
+        source,
+        target,
+        animated,
+        type: 'animatedEdge',
+      });
     }
 
     function setNodeStatus(id: string, status: AgentStatus) {
@@ -105,7 +124,7 @@ export function useAgentGraph(events: EngineEvent[]): { nodes: AgentNode[]; edge
 
     function populateFromStatic() {
       for (const agent of staticAgents) {
-        upsertNode(agent.name, { agentType: agent.type, status: 'idle' });
+        upsertNode(agent.name, { agentType: toNodeType(agent.type), status: 'idle' });
         for (const member of agent.team) {
           upsertEdge(agent.name, member, false);
         }
