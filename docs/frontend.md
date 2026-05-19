@@ -1,627 +1,170 @@
 # Frontend
 
-## Status
-
-🟢 **Frontend v2 "Mission Control" implemented** — branch `frontend-v2-test2`, binary v0.0.4.
-
----
-
-## Overview
-
-The AI Engine frontend is a React + TypeScript SPA built with Vite. It serves as a **developer cockpit** for launching agent missions and observing the full agent tree execution in real time.
-
-Two versions exist:
-
-| Version | Branch | Description |
-|---|---|---|
-| **v1** | `main` | Minimal layout: graph + event feed + prompt input. Single panel. |
-| **v2** | `frontend-v2-test2` | Full "Mission Control" redesign: 3-column cockpit, glassmorphism graph, live terminal, session history, resizable panels, agent detail drawer. |
-
-This document describes **v2**. For v1, see git history.
-
-It lives inside the same repository at `/frontend` and communicates exclusively with the engine's WebSocket server.
-
----
-
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | React 19 + TypeScript |
-| Build tool | Vite |
-| Styling | Plain CSS (no UI library, no Tailwind) |
-| WebSocket | Native browser `WebSocket` API |
-| Agent Graph | `@xyflow/react 12` + `@dagrejs/dagre 3` |
-| Package manager | npm |
-| UI Font | `Inter` (Google Fonts) |
-| Terminal Font | `JetBrains Mono` (Google Fonts) |
+| Technology | Version | Purpose |
+|---|---|---|
+| React | 19 | UI framework |
+| TypeScript | — | Type safety |
+| Vite | — | Build tool, dev server |
+| Plain CSS | — | Styling (no UI library) |
+| `@xyflow/react` | v12 | Agent graph canvas |
+| `@dagrejs/dagre` | — | Automatic graph layout |
+| `recharts` | — | Analytics charts |
 
----
-
-## Design System
-
-### Color Palette (CSS variables in `index.css`)
-
-```css
---bg-base:       #080c14;   /* deep navy — main background */
---bg-surface:    #0d1117;   /* cards and panels */
---bg-surface-2:  #161b22;   /* elevated elements */
---border:        #21262d;   /* subtle borders */
---accent:        #58a6ff;   /* electric blue — primary actions */
---success:       #3fb950;   /* green — done */
---warning:       #d29922;   /* yellow — running / tool calls */
---error:         #f85149;   /* red — error */
---purple:        #bc8cff;   /* violet — leader agents */
---text-primary:  #e6edf3;
---text-muted:    #7d8590;
-```
-
-### Visual Effects
-
-- **Glassmorphism** on agent node cards: `backdrop-filter: blur(12px)`, semi-transparent background
-- **Glow** on active nodes: pulsing `box-shadow` in accent color (`pulse-glow` keyframe)
-- **Animated edges**: SVG `stroke-dashoffset` animation while agent is running (`dash-flow` keyframe)
-- **Slide-in drawer**: `transform: translateX` transition (`slide-in-right` keyframe)
-- **Scanline overlay** in terminal: CSS `repeating-linear-gradient` for CRT effect
+The frontend is built with `npm run build` inside `src/frontend/`, outputs to `src/backend/frontend-dist/`, and is embedded in the Go binary via `src/backend/embed.go`.
 
 ---
 
 ## Layout
 
-```
-┌──────────────┬──────────────────────────────┬──────────────┐
-│   SIDEBAR    │       COCKPIT AREA           │   MISSION    │
-│   240px      │       flex: 1                │   PANEL      │
-│  (collapsible│  ┌──────────────────────┐    │   360px      │
-│   Ctrl+B)    │  │   AGENT GRAPH (60%)  │    │              │
-│              │  │                      │    │              │
-│              │  ├──── ResizeHandle ────┤    │              │
-│              │  │  LIVE TERMINAL (40%) │    │              │
-│              │  └──────────────────────┘    │              │
-└──────────────┴──────────────────────────────┴──────────────┘
-```
-
-The vertical split between graph and terminal is drag-resizable.
-
----
-
-## Folder Structure
+Three-column layout:
 
 ```
-frontend/src/
-├── App.tsx                          # Root component — wires all layout + keyboard shortcuts
-├── App.css                          # Minimal layout-only styles
-├── index.css                        # CSS variables, global reset, keyframe animations
-├── main.tsx                         # Vite entry point (unchanged)
-├── components/
-│   ├── layout/
-│   │   ├── Sidebar.tsx              # Collapsible sidebar — session history + New Mission
-│   │   ├── CockpitArea.tsx          # Center area — graph + resize handle + terminal
-│   │   ├── MissionPanel.tsx         # Right panel — all mission controls
-│   │   └── ResizeHandle.tsx         # Drag handle for vertical split
-│   ├── graph/
-│   │   ├── AgentGraph.tsx           # React Flow canvas — dot grid, MiniMap, Controls
-│   │   ├── LeaderNode.tsx           # Custom node — glassmorphism, hexagonal badge, glow
-│   │   ├── ExecutorNode.tsx         # Custom node — pill shape, circular badge
-│   │   └── AnimatedEdge.tsx         # Custom edge — SVG particle animation
-│   ├── terminal/
-│   │   ├── LiveTerminal.tsx         # Terminal panel — scanline, auto-scroll, export
-│   │   └── TerminalLine.tsx         # Single terminal line — color-coded by event type
-│   ├── mission/
-│   │   ├── PromptEditor.tsx         # Auto-resize textarea, Ctrl+Enter to submit
-│   │   ├── LaunchButton.tsx         # Countdown 3→2→1→🚀 before firing
-│   │   ├── TaskProgress.tsx         # Markdown checklist parser + progress bar
-│   │   ├── AgentRoster.tsx          # Live agent list with status + tool call count
-│   │   └── QuickStats.tsx           # Tool calls, agents, live duration counter
-│   └── drawers/
-│       └── AgentDetailDrawer.tsx    # Slide-in drawer — per-agent event timeline
-├── hooks/
-│   ├── useWebSocket.ts              # WebSocket lifecycle + auto-reconnect + latency
-│   ├── useAgentGraph.ts             # Derives { nodes, edges } from EngineEvent[]
-│   ├── useSessionHistory.ts         # localStorage session persistence (max 20)
-│   ├── useResizable.ts              # Drag-to-resize vertical split ratio
-│   └── useKeyboardShortcuts.ts      # Global keyboard shortcuts (Ctrl+B, Escape)
-└── types/
-    ├── events.ts                    # EngineEvent, EventType
-    ├── graph.ts                     # AgentNode, AgentEdge, AgentStatus, AgentType
-    └── session.ts                   # SessionRecord for localStorage persistence
+┌──────────┬──────────────────────────────┬─────────────┐
+│          │                              │             │
+│ Sidebar  │      Cockpit Area            │   Mission   │
+│  240px   │  (graph top / terminal bot)  │   Panel     │
+│ collapse │  drag-resizable split        │   360px     │
+│  Ctrl+B  │                              │             │
+└──────────┴──────────────────────────────┴─────────────┘
 ```
 
----
-
-## Component Specifications
-
-### `App.tsx`
-
-Root component. Responsibilities:
-1. Instantiates `useWebSocket`, `useAgentGraph`, `useSessionHistory`.
-2. Manages sidebar collapsed state and selected agent (for drawer).
-3. Registers keyboard shortcuts via `useKeyboardShortcuts`: `Ctrl+B` (sidebar), `Escape` (drawer).
-4. Wraps everything in `ReactFlowProvider`.
-5. Renders: `<Sidebar>`, `<CockpitArea>`, `<MissionPanel>`, `<AgentDetailDrawer>`.
+When Analytics is active (`Ctrl+Shift+A`), the Cockpit Area is replaced by `AnalyticsPanel`.
 
 ---
 
-### `components/layout/Sidebar.tsx`
+## Component Tree
 
-Left sidebar (240px, collapsible via `Ctrl+B`).
+### Root
 
-**Content:**
-- Top: Logo area — icon + "AI Engine" text + "v2" version badge.
-- Middle: Session history list (from `useSessionHistory`).
-  - Each item: relative timestamp (e.g. "2 min ago"), status badge (running/done/error), first 60 chars of prompt.
-  - Active session: left accent border highlight.
-  - Clicking a past session loads its events for replay (read-only).
-- Bottom: "New Mission" button — clears current session, enables input.
+- **[`App.tsx`](../src/frontend/src/App.tsx)** — Root component. Wires all layout sections, provides `ReactFlowProvider`, manages `showAnalytics` state, registers keyboard shortcuts via `useKeyboardShortcuts`.
 
-When collapsed: shows only logo icon + session count badge.
+### Layout
 
----
+- **[`layout/Sidebar.tsx`](../src/frontend/src/components/layout/Sidebar.tsx)** — Session history list (fetched from `GET /sessions`), New Mission button, Analytics toggle button (📊, purple accent when active), version badge (fetched from `GET /version`).
 
-### `components/layout/CockpitArea.tsx`
+- **[`layout/CockpitArea.tsx`](../src/frontend/src/components/layout/CockpitArea.tsx)** — Contains the agent graph (top) and live terminal (bottom) with a drag-resizable vertical split. When Analytics is active, this component is replaced by `AnalyticsPanel` at the `App` level.
 
-Center area. Contains:
-- `<AgentGraph>` in the top zone (default 60% height).
-- `<ResizeHandle>` drag handle.
-- `<LiveTerminal>` in the bottom zone (default 40% height).
+- **[`layout/MissionPanel.tsx`](../src/frontend/src/components/layout/MissionPanel.tsx)** — Connection status indicator, prompt editor, launch button, task progress, agent roster, quick stats.
 
-Manages the vertical split ratio via `useResizable`.
+- **[`layout/ResizeHandle.tsx`](../src/frontend/src/components/layout/ResizeHandle.tsx)** — Drag handle for the vertical split between graph and terminal. Emits `mousemove`/`mouseup` events consumed by `useResizable`.
 
----
+### Graph
 
-### `components/layout/ResizeHandle.tsx`
+- **[`graph/AgentGraph.tsx`](../src/frontend/src/components/graph/AgentGraph.tsx)** — React Flow canvas. Line grid background (`BackgroundVariant.Lines`, gap=40, lineWidth=0.5). No MiniMap. `fitView` called via `onInit` callback (100ms delay) and `useEffect` on node changes (150ms delay). `ResizeObserver` on the container calls `fitView` (50ms debounce) when the container size changes.
 
-Horizontal drag strip (6px tall, full width).
+- **[`graph/LeaderNode.tsx`](../src/frontend/src/components/graph/LeaderNode.tsx)** — Glassmorphism card, hexagonal "L" badge with purple gradient, top accent line, `pulse-glow-purple` animation when running.
 
-- Background: `--border`; hover: `--accent` at 40% opacity.
-- Cursor: `ns-resize`.
-- Center indicator: 3 horizontal dots.
-- `onMouseDown` → starts drag, updates parent split ratio on `mousemove`, ends on `mouseup`.
+- **[`graph/ExecutorNode.tsx`](../src/frontend/src/components/graph/ExecutorNode.tsx)** — Pill shape (`border-radius: 40px`), circular "E" badge with blue gradient, bottom status bar colored by state.
 
----
+- **[`graph/AnimatedEdge.tsx`](../src/frontend/src/components/graph/AnimatedEdge.tsx)** — Glow halo path + animated dashes + two staggered SVG `<animateMotion>` particles when the connected agent is active. Static line when idle.
 
-### `components/layout/MissionPanel.tsx`
+### Terminal
 
-Right panel (360px). Sections top-to-bottom:
-1. Connection status dot + label + latency.
-2. `<PromptEditor>`.
-3. `<LaunchButton>`.
-4. `<TaskProgress>` — visible only when session is running.
-5. `<AgentRoster>` — visible only when agents exist.
-6. `<QuickStats>` — visible only when session is running or done.
+- **[`terminal/LiveTerminal.tsx`](../src/frontend/src/components/terminal/LiveTerminal.tsx)** — JetBrains Mono font, scanline CRT overlay, auto-scroll to bottom on new events, Clear button (filters display without clearing graph state), Export button (downloads `.jsonl`).
 
----
+- **[`terminal/TerminalLine.tsx`](../src/frontend/src/components/terminal/TerminalLine.tsx)** — Color-coded by event type: `[SESSION]` cyan, `[AGENT]` violet, `[TOOL]` yellow, `[RESULT]` green, `[ERROR]` red. Timestamps use `event.receivedAt ?? event.timestamp ?? ''` as fallback for historical events.
 
-### `components/graph/AgentGraph.tsx`
+### Mission Panel
 
-React Flow canvas. Props: `{ nodes, edges, onNodeClick }`.
+- **[`mission/PromptEditor.tsx`](../src/frontend/src/components/mission/PromptEditor.tsx)** — Auto-resize textarea, `Ctrl+Enter` to submit, focus glow.
 
-- Background: `--bg-base` with line grid (`<Background variant="lines">`, `gap=40`, `lineWidth=0.5`, `color="rgba(33,38,45,0.4)"`).
-- `<Controls>` (bottom-left). No `<MiniMap>` — removed because it overlapped nodes in small viewports.
-- Radial gradient depth overlay: `radial-gradient(ellipse at 50% 40%, rgba(88,166,255,0.04), transparent 70%)` — subtle depth effect, `pointerEvents: none`.
-- Custom node types: `leaderNode` → `LeaderNode`, `executorNode` → `ExecutorNode`.
-- Custom edge type: `animatedEdge` → `AnimatedEdge`.
-- Empty state: inline SVG network icon + "Launch a mission to see the agent graph".
-- `ReactFlowProvider` is in `App.tsx` — **not** inside this component.
-- Nodes are read-only (not draggable, not connectable).
-- `fitView` is dynamic: `onInit` callback calls `instance.fitView({ padding: 0.4, duration: 400 })` after 100ms delay; `useEffect` re-fits on `nodes` change (150ms delay). This ensures correct centering after DOM layout settles.
+- **[`mission/LaunchButton.tsx`](../src/frontend/src/components/mission/LaunchButton.tsx)** — 3→2→1→🚀 countdown animation before firing the WebSocket message.
 
----
+- **[`mission/TaskProgress.tsx`](../src/frontend/src/components/mission/TaskProgress.tsx)** — Parses the Markdown checklist from `tasks.updated` events (`[x]` done, `[-]` in progress, `[ ]` pending). Renders a progress bar and item list.
 
-### `components/graph/LeaderNode.tsx`
+- **[`mission/AgentRoster.tsx`](../src/frontend/src/components/mission/AgentRoster.tsx)** — Live list of all agents seen in the current session. Each entry shows: status dot (idle/running/done/error), agent name, type badge (L/E), tool call count.
 
-Custom React Flow node for leader agents.
+- **[`mission/QuickStats.tsx`](../src/frontend/src/components/mission/QuickStats.tsx)** — Total tool calls, unique agents active, live session duration counter (increments every second while session is running).
 
-- Rounded rectangle (`borderRadius: 14px`), `minWidth: 220px`.
-- Glassmorphism: `background: linear-gradient(135deg, rgba(188,140,255,0.08), rgba(13,17,23,0.97))`, `backdrop-filter: blur(16px)`.
-- Full-width top accent line: 3px gradient `transparent → borderColor → transparent`.
-- Top-left badge: 32×32 hexagon (`clipPath: polygon(...)`) with `linear-gradient(135deg, #bc8cff, #7c3aed)`, "L" letter, `box-shadow: 0 0 8px rgba(188,140,255,0.5)`.
-- Agent name (bold, 13px) + status label below (monospace, 10px, color-coded).
-- Status-driven border color: `rgba(188,140,255,0.3)` idle → `rgba(188,140,255,0.9)` running → `rgba(63,185,80,0.7)` done → `rgba(248,81,73,0.7)` error.
-- Running: `pulse-glow-purple` animation + animated blink dot before status label.
-- Hover: `transform: translateY(-2px)` lift via `onMouseEnter`/`onMouseLeave` state.
-- Entrance: `node-appear` animation (scale + translateY fade-in).
-- Tool call count badge (top-right, from `data.toolCallCount`).
-- Handles: `<Handle type="target" position={Position.Top}>` + `<Handle type="source" position={Position.Bottom}>`, styled as 10×10 colored dots.
+### Drawers
 
----
+- **[`drawers/AgentDetailDrawer.tsx`](../src/frontend/src/components/drawers/AgentDetailDrawer.tsx)** — Slides in from the right when a graph node is clicked (`animation: slide-in-right 250ms ease`). Shows per-agent event timeline (started, tool calls, results, finished). Returns `null` when no agent is selected (no off-screen ghost). Close via `×` button or `Escape`.
 
-### `components/graph/ExecutorNode.tsx`
+### Analytics
 
-Custom React Flow node for executor agents.
+- **[`analytics/AnalyticsPanel.tsx`](../src/frontend/src/components/analytics/AnalyticsPanel.tsx)** — Top-level container managing 3-level navigation: `project` → `session` → `agent`. Breadcrumb navigation. Calls `loadSessionLogs` when a session is selected.
 
-- Pill shape (`borderRadius: 40px`), `minWidth: 190px`.
-- Glassmorphism: `background: linear-gradient(135deg, rgba(88,166,255,0.06), rgba(13,17,23,0.97))`, `backdrop-filter: blur(16px)`.
-- Inner radial glow: `radial-gradient(ellipse at 30% 0%, rgba(88,166,255,0.10), transparent 70%)`.
-- Top-left badge: 28×28 circle with `linear-gradient(135deg, #58a6ff, #1d4ed8)`, "E" letter, `box-shadow: 0 0 6px rgba(88,166,255,0.4)`.
-- Bottom status bar: 3px height, color-coded by status, `box-shadow` matching status color.
-- Agent name (600 weight, 12px) + status label (monospace, 10px, color-coded).
-- Running: `pulse-glow` animation + animated blink dot before status label.
-- Hover: `transform: translateY(-2px)` lift.
-- Entrance: `node-appear` animation.
-- Tool call count badge (top-right, from `data.toolCallCount`).
-- Handles: same as `LeaderNode`, 8×8.
+- **[`analytics/ProjectView.tsx`](../src/frontend/src/components/analytics/ProjectView.tsx)** — 6 stat cards (Total Missions, Done, Errors, Input Tokens, Output Tokens, Total Cost) from `GET /tokens`. Horizontal bar chart (cost per session, colored by status). Status donut chart (done/error/running). Sessions table (prompt, status, started at, duration, cost) with clickable rows.
 
----
+- **[`analytics/SessionView.tsx`](../src/frontend/src/components/analytics/SessionView.tsx)** — Header with back button, full prompt, status badge, duration, cost from `GET /sessions/{id}/tokens`. Agent swimlane timeline (div-based horizontal bars, percentage of total session duration). Agent summary table (name, type, LLM turns, tool calls, tokens, cost, avg tool duration) with clickable rows. Tool usage bar chart (call count per tool, colored by success rate). Cost waterfall (stacked bar per agent).
 
-### `components/graph/AnimatedEdge.tsx`
-
-Custom React Flow edge.
-
-- Uses `getBezierPath` from `@xyflow/react`.
-- **Base path**: `strokeWidth: 2` (animated) / `1.5` (static), `rgba(88,166,255,0.6)` / `rgba(33,38,45,0.6)`.
-- **Glow halo** (animated only): same path, `strokeWidth: 6`, `opacity: 0.15`, `stroke: var(--accent)`, `edge-glow-pulse` animation — creates soft glow around the edge.
-- **Animated dashes** (animated only): `stroke-dasharray: 8 12`, `dash-flow` keyframe.
-- **Two particles** (animated only): `<circle r="3">` with `<animateMotion>` — first at `dur="1.2s"`, second at `dur="1.8s" begin="0.6s"` — staggered flow effect.
-
----
-
-### `components/terminal/LiveTerminal.tsx`
-
-Live event log styled as a real terminal.
-
-- Background: `#050810` (darker than base).
-- Font: `JetBrains Mono`, 13px.
-- Header: "LIVE LOG" title + "Clear" button + "Export" button (downloads events as `.jsonl` via `URL.createObjectURL`).
-- Scanline overlay: CSS `repeating-linear-gradient` for CRT effect.
-- Auto-scrolls to bottom on new events.
-- Renders `<TerminalLine>` per event.
-
----
-
-### `components/terminal/TerminalLine.tsx`
-
-Single terminal line. Props: `{ event: EngineEvent }`.
-
-**Format:** `HH:MM:SS  [TYPE]  agent-name  › message`
-
-**Color coding:**
-
-| Event type | Color |
-|---|---|
-| `session.started` / `session.finished` | `--accent` (cyan-blue) |
-| `agent.started` / `agent.finished` | `--purple` |
-| `tool.called` / `tool.result` | `--warning` (yellow) |
-| `tasks.updated` | `#2dd4bf` (teal) |
-| `error` | `--error` |
-
----
-
-### `components/mission/PromptEditor.tsx`
-
-Props: `{ onSend, disabled }`.
-
-- Auto-resize textarea (min 120px, max 240px).
-- Background: `--bg-surface-2`, border: `--border`.
-- Focus: border → `--accent`.
-- Placeholder: "Describe your mission..."
-- `Ctrl+Enter` submits.
-
----
-
-### `components/mission/LaunchButton.tsx`
-
-Props: `{ onClick, disabled, isRunning }`.
-
-- Full-width, 48px height.
-- Gradient: `linear-gradient(135deg, #1d4ed8, #58a6ff)`.
-- Idle text: "🚀 Launch Mission". Running text: "⏳ Mission Running...".
-- On click: countdown animation "3..." → "2..." → "1..." → "🚀 Launching" (600ms via `setTimeout` chains) before calling `onClick`.
-- Running state: pulsing border animation (`pulse-border` keyframe).
-
----
-
-### `components/mission/TaskProgress.tsx`
-
-Props: `{ events: EngineEvent[] }`.
-
-Parses the latest `tasks.updated` event's `content` field (Markdown checklist):
-- `[x]` → completed
-- `[-]` → in progress
-- `[ ]` → pending
-
-Renders:
-- Section title: "TASK PROGRESS".
-- Progress bar: filled = completed/total, color `--success`.
-- Item list with icons (✓ / ⟳ / ○) and truncated text (40 chars).
-
----
-
-### `components/mission/AgentRoster.tsx`
-
-Props: `{ events: EngineEvent[] }`.
-
-Derives agent list from events. Per agent: name, type (leader/executor), status, tool call count.
-
-- Section title: "AGENT ROSTER".
-- Each row: status dot (colored), name, type badge (L/E), tool call count (right-aligned).
-- Running agents: subtle highlighted background.
-
----
-
-### `components/mission/QuickStats.tsx`
-
-Props: `{ events: EngineEvent[], startTime: Date | null }`.
-
-- Section title: "QUICK STATS".
-- 3 stat cards: "Tool Calls" (total `tool.called` events), "Agents" (unique agent names), "Duration" (live counter while running, final value when done).
-
----
-
-### `components/drawers/AgentDetailDrawer.tsx`
-
-Props: `{ agent: string | null, events: EngineEvent[], onClose: () => void }`.
-
-- Width: 420px, full height.
-- Background: `--bg-surface`, border-left: `--border`.
-- Slide-in animation: `transform: translateX(0)` from `translateX(100%)` (`slide-in-right` keyframe).
-- Header: agent name + type badge + close button (×).
-- Content: scrollable per-agent event timeline filtered by `event.agent_name === agent`.
-- Close: × button or `Escape` key.
+- **[`analytics/AgentView.tsx`](../src/frontend/src/components/analytics/AgentView.tsx)** — Header with agent name, type badge (LEADER/EXECUTOR), model, summary stats. Tokens per turn sparkline (`LineChart`, input=accent, output=purple). Avg tool duration bar chart. Turn-by-turn accordion: stop reason, token counts, tool call count, consecutive errors. Expandable sections: 📋 System Prompt (4-tab: Engine Context / Workspace Tree L4 / Agent Role / Task Context), 💬 Message History, 🔧 Tools Available, 🤖 LLM Response, ⚡ Tool Executions. Expand All / Collapse All button.
 
 ---
 
 ## Hooks
 
-### `useWebSocket.ts`
+- **[`useWebSocket.ts`](../src/frontend/src/hooks/useWebSocket.ts)** — WebSocket connection management. Auto-reconnect (max 10 attempts, 3s interval). Exposes `connect`, `send`, `wsEvents`, `connectionStatus`, `latency`, `sessionStartTime`. Sends `ping` heartbeat to measure latency.
 
-Extended interface:
+- **[`useAgentGraph.ts`](../src/frontend/src/hooks/useAgentGraph.ts)** — Derives `{ nodes, edges }` from the live event stream and the static `/agents` response. `toNodeType()` maps `"leader"` → `"leaderNode"`, `"executor"` → `"executorNode"` for React Flow custom node registration. Uses `@dagrejs/dagre` for automatic layout (`NODE_WIDTH=260`, `NODE_HEIGHT=100`, `nodesep=80`, `ranksep=120`).
 
-```ts
-interface UseWebSocketReturn {
-  events: EngineEvent[];
-  isConnected: boolean;
-  isRunning: boolean;
-  connectionStatus: string;        // "Connected" | "Disconnected" | "Reconnecting (N/10)..."
-  latency: number | null;          // ms, measured on each event receipt
-  sessionStartTime: Date | null;   // set on session.started
-  sendMessage: (text: string) => void;
-  clearEvents: () => void;
-}
-```
+- **[`useSessionHistory.ts`](../src/frontend/src/hooks/useSessionHistory.ts)** — Fetches `GET /sessions` and `GET /sessions/{id}/events`. Maps `timestamp → receivedAt` for historical events: `receivedAt: e.receivedAt || e.timestamp || ''`.
 
-**Auto-reconnect:** on disconnect, retries every 3 seconds, max 10 attempts. `connectionStatus` reflects reconnect state.
+- **[`useResizable.ts`](../src/frontend/src/hooks/useResizable.ts)** — Manages the vertical split ratio between graph and terminal via `mousemove`/`mouseup` on `document`.
 
----
+- **[`useKeyboardShortcuts.ts`](../src/frontend/src/hooks/useKeyboardShortcuts.ts)** — Global `keydown` handler. Shortcuts: `Ctrl+B` (toggle sidebar), `Escape` (close drawer), `Ctrl+Shift+A` (toggle analytics).
 
-### `useAgentGraph.ts`
-
-Derives `{ nodes, edges }` from `EngineEvent[]` and static agent data from `GET /agents`.
-
-**Key fix (v0.0.9):** The `/agents` endpoint returns `"type": "leader"` / `"type": "executor"`. A `toNodeType()` function maps these to `"leaderNode"` / `"executorNode"` before passing to React Flow — without this mapping, React Flow falls back to `"default"` and renders plain white nodes.
-
-- `inferAgentType(name)` — fallback heuristic: names containing `leader`, `orchestrat`, `manager`, `swarmito` → `"leaderNode"`; all others → `"executorNode"`.
-- `toNodeType(apiType)` — maps `"leader"` → `"leaderNode"`, `"executor"` → `"executorNode"`, falls back to `inferAgentType`.
-- `populateFromStatic()` — seeds the graph from `/agents` before any session starts, using `toNodeType()`.
-- Layout constants: `NODE_WIDTH=260`, `NODE_HEIGHT=100`, `nodesep=80`, `ranksep=120` (updated in v0.0.10 to match redesigned node sizes).
-- Edge type: `animatedEdge`.
-
----
-
-### `useSessionHistory.ts`
-
-Manages `localStorage` key `ai-engine-sessions`.
-
-```ts
-interface SessionRecord {
-  id: string;
-  prompt: string;
-  startedAt: string;    // ISO timestamp
-  finishedAt?: string;
-  status: 'running' | 'done' | 'error';
-  events: EngineEvent[];
-}
-```
-
-- `sessions: SessionRecord[]` — all saved sessions (max 20, oldest dropped).
-- `startSession(prompt)` — creates new record.
-- `saveEvent(event)` — appends to active session.
-- `finishSession(status)` — marks as finished.
-- `loadSession(id)` — returns record for replay.
-
----
-
-### `useResizable.ts`
-
-```ts
-function useResizable(defaultRatio: number): {
-  ratio: number;
-  handleMouseDown: (e: MouseEvent) => void;
-}
-```
-
-Manages vertical split ratio. Uses `mousemove`/`mouseup` on `document`.
-
----
-
-### `useKeyboardShortcuts.ts`
-
-Registers global `keydown` handlers. Takes a map of `{ key: string, handler: () => void }`.
-
-Registered shortcuts in `App.tsx`:
-- `Ctrl+B` — toggle sidebar.
-- `Escape` — close agent detail drawer.
+- **[`useAnalytics.ts`](../src/frontend/src/hooks/useAnalytics.ts)** — Fetches `GET /sessions/{id}/logs`. Exposes `sessionLogs`, `loadingLogs`, `loadSessionLogs(id)`, `clearSessionLogs`.
 
 ---
 
 ## Types
 
-### `types/events.ts`
+- **[`types/events.ts`](../src/frontend/src/types/events.ts)** — `EngineEvent` interface (all event fields including `timestamp?: string`), `EventType` union.
 
-```ts
-export type EventType =
-  | 'session.started'
-  | 'session.finished'
-  | 'agent.started'
-  | 'agent.finished'
-  | 'tool.called'
-  | 'tool.result'
-  | 'tasks.updated'
-  | 'error';
+- **[`types/graph.ts`](../src/frontend/src/types/graph.ts)** — `AgentStatus` (`"idle" | "running" | "done" | "error"`), `AgentType` (`"leaderNode" | "executorNode"`), `AgentNodeData`, `StaticAgent` (with `type: "leader" | "executor"` matching the API response).
 
-export interface EngineEvent {
-  type: EventType;
-  session_id?: string;
-  agent_name?: string;
-  payload?: Record<string, unknown>;
-  receivedAt: string;   // ISO timestamp added client-side on receipt
-}
-```
+- **[`types/session.ts`](../src/frontend/src/types/session.ts)** — `SessionMeta` interface (id, prompt, startedAt, finishedAt, status).
+
+- **[`types/logs.ts`](../src/frontend/src/types/logs.ts)** — `LogEntry`, `SystemLayers`, `ContentLog`, `MessageLog`, `ToolCallEntry`, `ToolLog`, `SessionLogs`.
 
 ---
 
-### `types/graph.ts`
+## Design System
 
-```ts
-export type AgentStatus = 'idle' | 'running' | 'done' | 'error';
-export type AgentType = 'leaderNode' | 'executorNode';   // React Flow custom node type names
+CSS variables defined in [`src/frontend/src/index.css`](../src/frontend/src/index.css):
 
-export interface AgentNodeData extends Record<string, unknown> {
-  label: string;
-  agentType: AgentType;
-  status: AgentStatus;
-  lastMessage?: string;
-}
-
-export interface AgentNode {
-  id: string;
-  type: AgentType;
-  data: AgentNodeData;
-  position: { x: number; y: number };
-}
-
-export interface AgentEdge {
-  id: string;
-  source: string;
-  target: string;
-  type: 'animatedEdge';
-  animated: boolean;
-}
-```
-
----
-
-### `types/session.ts`
-
-```ts
-export interface SessionRecord {
-  id: string;
-  prompt: string;
-  startedAt: string;
-  finishedAt?: string;
-  status: 'running' | 'done' | 'error';
-  events: EngineEvent[];
-}
-```
-
----
-
-## Running Locally
-
-### Prerequisites
-
-- Node.js 18+
-- The AI Engine backend running on `localhost:8080` (or the configured port)
-
-### Commands
-
-```bash
-cd frontend
-npm install
-npm run dev       # starts dev server at http://localhost:5173
-npm run build     # production build to frontend/dist/
-```
-
-### Environment
-
-The WebSocket URL defaults to `ws://localhost:8080/ws`. To override:
-
-```bash
-VITE_WS_URL=ws://localhost:9090/ws npm run dev
-```
-
----
-
-## WebSocket Protocol
-
-### Message sent by the frontend
-
-```json
-{
-  "event": "user.message",
-  "session_id": "abc123",
-  "payload": {
-    "text": "Build a REST API for user management"
-  }
-}
-```
-
-> For the first message of a session, `session_id` may be omitted.
-
-### Events received from the engine
-
-```json
-{
-  "type": "event_type",
-  "session_id": "abc123",
-  "agent_name": "executor-d",
-  "payload": { ... }
-}
-```
-
-> **Note:** The engine uses `"type"` (not `"event"`) in outgoing events. See [`internal/events/bus.go`](../internal/events/bus.go).
-
-#### Full event type reference
-
-| `type` value | Trigger | Payload fields |
+| Variable | Value | Usage |
 |---|---|---|
-| `session.started` | User sends first message | _(none)_ |
-| `session.finished` | Swarmito calls `finish_work` | `result: string` |
-| `agent.started` | An agent begins execution | `message: string` |
-| `agent.finished` | An agent calls `finish_work` | `result: string` |
-| `tool.called` | An agent invokes a tool | `tool: string`, `id: string` |
-| `tool.result` | A tool execution completes | `tool: string`, `id: string`, `result: string` |
-| `tasks.updated` | A leader creates/updates a task file | `content: string` |
-| `error` | An unrecoverable error occurs | `error: string` |
+| `--bg-base` | `#080c14` | Page background |
+| `--bg-surface` | `#0d1117` | Card/panel background |
+| `--bg-elevated` | `#161b22` | Elevated surfaces |
+| `--accent` | `#58a6ff` | Blue accent (executor nodes, links) |
+| `--purple` | `#bc8cff` | Purple accent (leader nodes, analytics) |
+| `--success` | `#3fb950` | Done/success states |
+| `--error` | `#f85149` | Error states |
+| `--text-primary` | `#e6edf3` | Primary text |
+| `--text-muted` | `#8b949e` | Secondary/muted text |
+
+Typography: **Inter** (UI text) + **JetBrains Mono** (terminal), loaded from Google Fonts in `index.html`.
+
+Keyframe animations: `node-appear`, `edge-glow-pulse`, `particle-trail`, `pulse-glow`, `pulse-glow-purple`, `pulse-border`, `dash-flow`, `slide-in-right`.
 
 ---
 
-## `vite.config.ts`
+## Development
 
-```ts
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    proxy: {
-      '/ws': {
-        target: 'ws://localhost:8080',
-        ws: true,
-      },
-    },
-  },
-})
+```cmd
+cd src/frontend
+npm run dev
 ```
 
----
+The Vite dev server proxies `/ws` → `ws://localhost:8080` so the frontend connects to a locally running `ai-engine` binary.
 
-## Dependencies
+```cmd
+npm run build
+```
 
-| Package | Version | Purpose |
-|---|---|---|
-| `react` | `^19.2.6` | UI framework |
-| `react-dom` | `^19.2.6` | DOM renderer |
-| `@xyflow/react` | `^12.10.2` | Agent graph canvas (React Flow v12) |
-| `@dagrejs/dagre` | `^3.0.0` | Directed graph auto-layout for agent tree |
+Outputs to `src/backend/frontend-dist/`. The Go binary embeds this directory via `src/backend/embed.go` at compile time.
 
 ---
 
-## Design Constraints
+## Analytics Toggle
 
-- **No UI library** — plain CSS only. No Tailwind, no MUI, no Chakra.
-- **No token streaming** — the engine does not stream partial text; only structured events are displayed.
-- **Session history in localStorage** — v2 persists sessions client-side (max 20). Engine-side persistence is a future enhancement.
-- **Single connection** — one WebSocket connection per browser tab. Multiple tabs are not a concern for V1.
-- **No authentication** — V1 assumes local use only.
+The Analytics panel replaces the Cockpit Area when active. Toggle via:
+- `Ctrl+Shift+A` keyboard shortcut
+- The 📊 Analytics button in the Sidebar
+
+When active, the Sidebar button is highlighted with the purple accent color.

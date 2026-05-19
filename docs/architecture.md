@@ -1,134 +1,185 @@
 # Architecture
 
-## Status
-
-🟢 Phase 4 complete — engine operational. Binary v0.0.12. Agent graph fully functional with custom glassmorphism nodes (`LeaderNode`, `ExecutorNode`), animated edges with dual particles and glow halo, correct node type mapping from `/agents` endpoint, and dynamic `fitView` centering.
-
----
-
-## Goals
-
-- Provide a runtime capable of orchestrating a **tree of AI agents**.
-- Be modular and extensible: new agent types, tools, and LLM providers should be easy to add.
-- Be observable: execution is streamed in real time to a frontend via WebSocket.
-- **V1 scope:** implement the minimum viable engine to support the defined agent tree and workflow. Designed for future extensibility.
-
----
-
 ## Core Concepts
 
-| Term | Definition |
-|---|---|
-| **workspace** | The directory on the user's machine where the engine operates. Agents are unaware of its absolute path. |
-| **Swarmito** | The top-level agent that serves as the interface between the user and the agent tree. |
-| **chat** | A conversation context between two entities (two agents, or user ↔ Swarmito). |
-| **leader** | An agent that has a team below it in the hierarchy (non-leaf node). |
-| **executor** | An agent that performs concrete tasks (leaf node). |
-| **task file** | A Markdown checklist file (per agent, per session) containing the list of tasks to be executed. |
+**Workspace** — the directory where the user runs `ai-engine`. All agent definitions, configuration, logs, and session data live under `.ai-engine/` inside this directory. The engine never reads or writes outside the workspace.
+
+**Agent tree** — a hierarchy of agents defined by the filesystem structure under `.ai-engine/agents/`. The tree is loaded into memory once per session start as a tree of `AgentNode` structs. Swarmito is always the root.
+
+**Session lifecycle** — a session begins when the frontend sends a `user.message` WebSocket event. The engine generates a UUID v4 session ID, starts the root agent (Swarmito), and streams all events back to the frontend. The session ends when Swarmito calls `finish_work` or a terminal error occurs. All session data is persisted to `.ai-engine/sessions/{id}/`.
 
 ---
 
-## Tech Stack
-
-| Layer | Technology | Notes |
-|---|---|---|
-| Runtime | **Go** | Single binary, native concurrency, good for long-running services |
-| LLM Provider (V1) | **Anthropic (Claude)** | Implemented behind a `LLMProvider` interface for future expansion |
-| Frontend Interface | **WebSocket** | Bidirectional, port `8080` (configurable), structured JSON events |
-| Config Format | **JSON** | Easy to serialize and send to frontend |
-| Agent Prompts | **Markdown** | Human-readable, easy to edit, renderable in frontend |
-
----
-
-## System Overview
+## System Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                           AI Engine                             │
-│                                                                 │
-│   Frontend ◀──────── WebSocket :8080 ──────────▶ User          │
-│       │                    │                                    │
-│       │              ┌─────▼──────┐                            │
-│       │              │  Session   │                            │
-│       │              │  Manager   │                            │
-│       │              └─────┬──────┘                            │
-│       │                    │                                    │
-│       │         ┌──────────▼──────────┐                        │
-│       │         │  Swarmito (root)    │                        │
-│       │         │  leader             │                        │
-│       │         └──────────┬──────────┘                        │
-│       │              ┌─────┴──────┐                            │
-│       │              ▼            ▼                            │
-│       │         Leader A      Leader B  ...                    │
-│       │         /   |   \                                      │
-│       │        D    E    F  (executors)                        │
-│       │                                                        │
-│  ┌────▼────────────────────────────────────────────────────┐   │
-│  │                      Engine Core                        │   │
-│  │                                                         │   │
-│  │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │   │
-│  │  │ Chat Manager│  │ Tool Executor│  │  LLM Client   │  │   │
-│  │  └─────────────┘  └──────────────┘  │  (interface)  │  │   │
-│  │                                     └───────┬───────┘  │   │
-│  │  ┌──────────────────────┐                   │          │   │
-│  │  │  Workspace Sandbox   │           ┌───────▼───────┐  │   │
-│  │  │  (path isolation)    │           │   Anthropic   │  │   │
-│  │  └──────────────────────┘           │   Provider    │  │   │
-│  │                                     └───────────────┘  │   │
-│  │  ┌──────────────────────┐                              │   │
-│  │  │   Event Bus          │  ──▶ WebSocket stream        │   │
-│  │  └──────────────────────┘                              │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+Browser
+  │
+  │  WebSocket ws://localhost:{port}/ws
+  │  HTTP      http://localhost:{port}/...
+  ▼
+┌─────────────────────────────────────────────────────┐
+│  internal/server  (HTTP + WebSocket)                │
+│  ┌─────────────┐   ┌──────────────────────────────┐ │
+│  │  Event Bus  │◄──│  Per-connection session mutex │ │
+│  └──────┬──────┘   └──────────────────────────────┘ │
+└─────────┼───────────────────────────────────────────┘
+          │ Publish / Subscribe
+          ▼
+┌─────────────────────────────────────────────────────┐
+│  internal/agent  (Runner)                           │
+│                                                     │
+│  5-layer system prompt composition                  │
+│  Tool dispatch loop                                 │
+│  Token tracking + nudge limit                       │
+│                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
+│  │  LLM Provider│  │Tool Executor │  │  Sandbox  │ │
+│  │  (Anthropic) │  │  (Registry)  │  │  (Shell)  │ │
+│  └──────────────┘  └──────────────┘  └───────────┘ │
+└─────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────┐
+│  Support packages                                   │
+│  internal/chatlog      internal/sessionstore        │
+│  internal/tokenstore   internal/pricing             │
+│  internal/registry     internal/dyncontext          │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Components
+## Go Packages
 
-### Engine Core
+### `cmd/ai-engine`
 
-| Component | Responsibility |
-|---|---|
-| **Session Manager** | Creates and tracks execution sessions. Generates session IDs (UUID v4). |
-| **Chat Manager** | Creates and manages chat sessions between agents or between user and Swarmito. Reads agent definitions from `.ai-engine/` on each interaction (hot-reload). |
-| **LLM Client** | Provider-agnostic interface (`LLMProvider`) for sending messages and receiving tool calls. V1 implementation: Anthropic. Detects `max_tokens` truncation and returns an error. |
-| **Tool Executor** | Receives tool call requests from agents, validates them, executes them, and returns results. Enforces `max_tool_retries` (consecutive errors) and `max_tool_calls` (total calls) limits. |
-| **Workspace Sandbox** | Intercepts all file/terminal operations and resolves paths relative to the configured workspace directory. Agents never see absolute paths. Prevents path traversal attacks. |
-| **Agent Registry** | Loads agent definitions from `.ai-engine/agents/` on demand. Parses `agent.json` and `system_prompt.md`. Also loads optional `engine_context.md`. |
-| **Event Bus** | Publishes structured JSON events to all connected WebSocket clients in real time. Thread-safe. |
-| **Chat Logger** | Writes structured JSONL logs to `.ai-engine/logs/{session-id}/{agent-name}/chat.jsonl`. Records every LLM turn, tool call, tool result, and finish event. Non-fatal — logging errors do not terminate the session. |
+Entry point. Parses the subcommand (`init` or none), resolves the workspace path (current working directory), instantiates all dependencies, and wires them together before starting the server. Injects the version string (set at compile time via `-ldflags "-X main.Version=..."`) into the server.
+
+### `internal/config`
+
+Loads `.ai-engine/config.json` and `.ai-engine/.env`. The `.env` parser strips surrounding single/double quotes from values. Validates that `provider`, `default_model`, and `root_agent` are non-empty. Config is re-read on every session start (hot-reload) — no restart required after editing `.ai-engine/`.
+
+### `internal/registry`
+
+Builds the in-memory `AgentNode` tree from the filesystem. Key functions:
+
+- `LoadTree(rootName) (*AgentNode, error)` — recursively walks `.ai-engine/agents/{rootName}/`, reads `agent.json` (optional), and builds the full tree. A directory with subdirectories containing `system_prompt.md` becomes a leader node; without such subdirectories it becomes an executor node.
+- `FindNode(root *AgentNode, name string) *AgentNode` — BFS search by agent name.
+- `LoadAgentTree(rootName) ([]AgentTreeNode, error)` — returns a flat list of all nodes for the `/agents` HTTP endpoint.
+- `LoadEngineContext() (string, error)` — reads `.ai-engine/engine_context.md`.
+
+### `internal/llm`
+
+Defines the `LLMProvider` interface and shared types (`Request`, `Response`, `Message`, `ContentBlock`, `ToolDefinition`, `ToolCall`). `ToolDefinition.InputSchema` is `json.RawMessage`.
+
+#### `internal/llm/anthropic`
+
+Implements `LLMProvider` for the Anthropic Messages API. Uses `MaxOutputTokens` from `llm.Request` with a fallback of 16000.
+
+### `internal/agent`
+
+- `Agent` struct — holds the `*registry.AgentNode`, session ID, workspace path, LLM provider, tool registry, sandbox, chatlog logger, event bus, and token store.
+- `Runner` — the execution loop. On each turn: composes the 5-layer system prompt, calls `provider.Send()`, dispatches all tool calls in the response as a batch, collects all results before any termination check, then checks retry/finish conditions. Tracks `consecutiveErrors`, `consecutiveNudges`, and `totalToolCalls`.
+
+### `internal/chatlog`
+
+JSONL logger. One file per agent per session at `.ai-engine/logs/{session}/{agent}/chat.jsonl`. Thread-safe (`sync.Mutex`). All writes are non-fatal — logging errors are printed to stderr and never terminate the session. See [`docs/chat-log-format.md`](./chat-log-format.md) for the full format reference.
+
+### `internal/dyncontext`
+
+Defines the `DynamicContextProvider` interface. `WorkspaceTreeProvider` implements it: walks the workspace directory tree (max depth 6), ignores `.git`, `node_modules`, `vendor`, `dist`, `build`, `__pycache__`, `.venv`, `venv`, `.ai-engine`, and returns a Markdown-formatted file tree. Recomputed before every LLM call.
+
+### `internal/pricing`
+
+Reads `.ai-engine/model-pricing.json`. `CalcCost(model, inputTokens, outputTokens)` returns the estimated cost in USD. Logs a warning when the model is not found in the pricing map.
+
+### `internal/tokenstore`
+
+Persists token usage to two locations:
+- `.ai-engine/tokens.json` — project-level aggregate (all sessions)
+- `.ai-engine/sessions/{id}/tokens.json` — per-session totals
+
+### `internal/sessionstore`
+
+Persists session metadata and events:
+- `.ai-engine/sessions/{id}/meta.json` — id, prompt, startedAt, finishedAt, status
+- `.ai-engine/sessions/{id}/events.jsonl` — one JSON event per line
+
+The `events.jsonl` file handle is opened at `StartSession` and kept open for the duration of the session (closed at `FinishSession`), eliminating per-event open/close overhead. Thread-safe via `sync.Mutex`.
+
+### `internal/tools`
+
+Defines the `Tool` interface (`Name()`, `Description()`, `InputSchema()`, `Execute(ctx, input)`). All tool implementations live here. `Registry` maps tool names to handlers and enforces the leader/executor tool sets — executors cannot call leader tools even if the LLM requests them.
+
+**Leader tools:** `create_chat`, `set_task_context`, `create_task_file`, `update_task_file`, `list_files`, `read_file`, `finish_work`
+
+**Executor tools:** `run_terminal_command`, `list_files`, `read_file`, `write_file`, `apply_diff`, `search_files`, `delete_file`, `finish_work`
+
+### `internal/sandbox`
+
+Path isolation and shell management.
+
+**`sandbox.go`** — `Sandbox` type. All agent file paths are resolved relative to the workspace root. Uses `filepath.Rel` + `strings.HasPrefix(rel, "..")` to detect traversal attempts — correctly handles Windows case-insensitive paths.
+
+**`shell.go`** — `Shell` type. A persistent `cmd.exe` (Windows) or `sh` (Unix) process that lives for the duration of a single agent execution. Uses sentinel-based output reading (`echo __AI_ENGINE_CMD_DONE_7f3a9b2c__`) to detect end of command output. Timeout via `time.After`. `Close()` is safe to call multiple times.
+
+**`shell_windows.go`** — Windows Job Object (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`). Assigns the shell process to the job on creation; closing the job handle kills the entire process tree, including background processes started with `&`.
+
+**`shell_unix.go`** — No-op stubs for `attachJobObject`/`closeJobObject`. On Unix, `exec.CommandContext` with `SIGKILL` handles process group cleanup.
+
+### `internal/session`
+
+UUID v4 session ID generation.
+
+### `internal/events`
+
+`Event` struct with `Type`, `SessionID`, `AgentName`, `Timestamp` (auto-filled by `Publish()` as RFC3339 UTC), and `Payload`. `Bus` supports `Subscribe(handler) SubscriptionID` and `Unsubscribe(id)` — handlers are stored in a `map[SubscriptionID]Handler`. `Publish` is non-blocking toward subscribers (uses `select { case: default: }` for the WebSocket forwarding handler).
+
+### `internal/scaffold`
+
+Implements `ai-engine init`. Writes the `.ai-engine/` skeleton using embedded templates. `writeNew` is idempotent — skips files that already exist.
+
+### `internal/server`
+
+HTTP + WebSocket server. Serves the embedded React frontend at `/`. All HTTP endpoints return JSON with `Access-Control-Allow-Origin: *`. Per-connection `sessionMu sync.Mutex` + `sessionActive bool` prevents concurrent sessions on the same WebSocket connection. Graceful shutdown via `signal.NotifyContext` on SIGINT/SIGTERM.
 
 ---
 
 ## Key Design Decisions
 
-### 1. Workspace Path Isolation
-Agents **never know the absolute path** of the workspace. All file and terminal commands issued by agents are treated as relative to the workspace root. The engine intercepts and resolves paths before execution. Path traversal attacks (e.g., `../../etc/passwd`) are rejected.
+### 1. Workspace path isolation
 
-### 2. Tool-Only Execution
-Agents operate **exclusively through tools**. There is no free-form text output that triggers side effects — all actions are explicit tool calls. If the LLM returns a plain text response with no tool calls, the engine injects a nudge message to keep the loop going.
+All agent file operations are resolved relative to the workspace root via `filepath.Rel`. Agents never see absolute paths. Traversal attempts (`../`) are rejected by the sandbox.
 
-### 3. Hot-Reload Configuration
-The engine reads `.ai-engine/` on every interaction. Agent definitions, system prompts, and config can be modified without restarting the engine.
+### 2. Tool-only execution
 
-### 4. Provider Abstraction
-The LLM client is defined as a Go interface (`LLMProvider`). V1 implements Anthropic. Adding a new provider requires only a new implementation of the interface.
+All agent actions are explicit tool calls. A plain text LLM response (no tool calls, `stop_reason != "end_turn"`) triggers a nudge message injected into the conversation. After 5 consecutive nudges without tool calls, the session terminates.
 
-### 5. Bidirectional WebSocket
-The frontend communicates exclusively via WebSocket on port `8080`. User prompts are sent as `user.message` events; the engine streams back structured execution events. A `/health` HTTP endpoint is also available.
+### 3. Hot-reload
 
-### 6. Error Strategy: Retry with Configurable Limits
-Tool errors are fed back to the agent as tool results (`is_error: true`). The agent can retry. If `max_tool_retries` consecutive errors occur, or `max_tool_calls` total calls are exceeded, the session terminates. Both limits are configurable in `config.json`.
+`.ai-engine/` is re-read on every session start. Changes to `config.json`, agent definitions, `system_prompt.md` files, and `engine_context.md` take effect immediately without restarting the binary.
 
-### 7. Sequential Execution (V1)
-Leaders process tasks and agent chats sequentially. Parallel execution is a future enhancement enabled by Go's native concurrency primitives.
+### 4. Provider abstraction
 
-### 8. 3-Layer System Prompt
-Every agent's system prompt is composed at runtime from three layers: (1) `engine_context.md` — shared engine instructions; (2) `system_prompt.md` — agent role and skills; (3) `task_context.md` — per-session task written by the leader via `set_task_context`. This separates stable role definitions from dynamic task assignments.
+The `LLMProvider` interface decouples the agent runner from any specific LLM API. V1 implements Anthropic. Adding a new provider requires only implementing the interface.
 
-### 9. Structured Chat Logging
-Every agent's conversation is logged to `.ai-engine/logs/{session-id}/{agent-name}/chat.jsonl`. Each line is a JSON object capturing the turn, role, tool calls, results, and errors. Logging is non-fatal — failures do not affect agent execution.
+### 5. Sequential execution
 
-### 10. Graceful Shutdown
-The server listens for `SIGINT`/`SIGTERM` via `signal.NotifyContext`. On signal, `http.Server.Shutdown` is called, allowing in-flight requests to complete before exit.
+Leaders process sub-agents sequentially (one `create_chat` at a time). There is no parallel agent execution in V1.
+
+### 6. 5-layer system prompt
+
+Every LLM call composes a system prompt from five layers in order. See [`docs/agents.md`](./agents.md) for the full layer specification.
+
+### 7. Persistent shell per agent
+
+Each agent execution gets one persistent shell process. `cd` commands persist between `run_terminal_command` calls within the same agent. The Windows Job Object ensures all child processes (including backgrounded ones) are killed when the agent finishes.
+
+### 8. Graceful shutdown
+
+`signal.NotifyContext` on SIGINT/SIGTERM cancels the root context, which propagates to all in-flight agent goroutines via `context.Context`.
+
+### 9. Batch tool result protocol
+
+The Anthropic API requires every `tool_use` block in a response to have a corresponding `tool_result` in the next message. The runner collects all tool results before performing any termination check. If `finish_work` is called in the middle of a batch, remaining tool calls receive `"skipped: finish_work already called"` as their result.

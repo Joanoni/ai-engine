@@ -1,83 +1,65 @@
 # AI Engine
 
-> A modular engine for running AI agents — built in Go.
-
-## Overview
-
-**AI Engine** is a platform designed to orchestrate and execute a hierarchical tree of AI agents. A root agent (**Swarmito**) serves as the interface with the user, decomposing objectives and delegating work down a tree of specialized agents. Leaders coordinate teams; executors perform concrete tasks using tools.
-
-The engine exposes a **WebSocket API** (port `8080`) so a frontend can observe the full execution flow in real time — and send user prompts bidirectionally through the same connection.
-
-All engine configuration lives inside a `.ai-engine/` folder in the user's workspace — hot-reloaded on every interaction, without polluting the user's project.
-
----
+AI Engine is a Go binary that orchestrates a hierarchical tree of AI agents. A root agent (**Swarmito**) receives a user prompt via WebSocket, decomposes the objective, and delegates work down a tree of specialized sub-agents. Leaders coordinate teams; executors perform concrete tasks using tools. The engine serves an embedded React frontend and exposes a WebSocket API for real-time observability. All configuration lives in a `.ai-engine/` folder inside the user's project directory (the workspace), which is hot-reloaded on every session start.
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Runtime | Go |
-| LLM Provider (V1) | Anthropic (Claude) — provider-agnostic interface for future expansion |
-| Frontend Interface | WebSocket (bidirectional, port `8080`) |
-| Config Format | JSON |
+| Runtime | Go (`github.com/swarmit/ai-engine`) |
+| LLM Provider | Anthropic (Claude) — via `LLMProvider` interface |
+| Transport | WebSocket (bidirectional, default port `8080`) |
+| Frontend | React 19 + TypeScript, Vite |
 | Agent Prompts | Markdown |
+| Config | JSON + `.env` |
 
----
-
-## Running
-
-### Build (Windows)
+## Build
 
 ```cmd
 build.cmd [patch|minor|major]
 ```
 
-This script:
-1. Reads the current version from [`version.txt`](./version.txt) and increments it (semver).
-2. Builds the React frontend (`npm run build` inside `frontend/`).
-3. Compiles the Go binary with the frontend embedded (`embed.go`).
-4. Outputs the versioned binary to `bin\{version}\ai-engine.exe`.
-5. Copies the binary to `bin\latest\ai-engine.exe`.
+Reads the current version from [`version.txt`](./version.txt), increments it (semver), builds the React frontend (`npm run build` inside `src/frontend/`), compiles the Go binary with the frontend embedded via [`src/backend/embed.go`](./src/backend/embed.go), and outputs:
 
-The bump type argument controls which semver component is incremented:
+- `bin\{version}\ai-engine.exe` — versioned binary
+- `bin\latest\ai-engine.exe` — always the latest build
 
 | Command | Example |
 |---|---|
-| `build.cmd` or `build.cmd patch` | `0.0.0 → 0.0.1` |
-| `build.cmd minor` | `0.0.1 → 0.1.0` |
+| `build.cmd` or `build.cmd patch` | `0.0.25 → 0.0.26` |
+| `build.cmd minor` | `0.0.26 → 0.1.0` |
 | `build.cmd major` | `0.1.0 → 1.0.0` |
 
-### Configuration
+## Run
 
-Place a `.env` file at `.ai-engine/.env` in your workspace with:
+Place the binary in your project directory (the workspace) and run:
+
+```cmd
+ai-engine init    # scaffold .ai-engine/ workspace structure
+ai-engine         # start the server (no arguments)
+```
+
+Then open `http://localhost:{port}` in your browser.
+
+## Configuration
+
+Set your API key in `.ai-engine/.env`:
 
 ```
 ANTHROPIC_API_KEY=your-key-here
 ```
 
-The engine also accepts `ANTHROPIC_API_KEY` as a system environment variable. Run `ai-engine init` to scaffold the workspace skeleton (including a blank `.ai-engine/.env`) automatically.
-
----
+The engine also reads `ANTHROPIC_API_KEY` from the system environment. All other configuration is in `.ai-engine/config.json`.
 
 ## Documentation
 
-Detailed documentation is organized by topic inside the [`docs/`](./docs/) folder:
-
 | Document | Description |
 |---|---|
-| [`docs/architecture.md`](./docs/architecture.md) | System architecture, components, and design decisions |
-| [`docs/agents.md`](./docs/agents.md) | Agent model: types, lifecycle, tools, 3-layer system prompt, and execution flow |
-| [`docs/workspace-structure.md`](./docs/workspace-structure.md) | `.ai-engine/` folder structure, config and agent file specs |
-| [`docs/events.md`](./docs/events.md) | WebSocket event system for frontend observability |
-| [`docs/error-handling.md`](./docs/error-handling.md) | Error handling: retry limits, tool call cap, terminal command behaviour |
-| [`docs/project-structure.md`](./docs/project-structure.md) | Go project layout, package responsibilities, interfaces, env vars |
-| [`docs/frontend.md`](./docs/frontend.md) | Frontend spec: React + TypeScript SPA, components, WebSocket protocol |
-| [`docs/roadmap.md`](./docs/roadmap.md) | Full development roadmap — completed phases, current status, remaining work |
-| [`docs/changelog.md`](./docs/changelog.md) | Release history — changes per version |
-| [`docs/analytics.md`](./docs/analytics.md) | Analytics BI Panel — architecture, components, endpoints, types, bug history |
-
----
-
-## Status
-
-🟢 **Phase 4 (Partial) Complete** — Engine operational with logging, retry, 3-layer system prompts, and graceful shutdown. Remaining: session persistence, leader escalation.
+| [`docs/getting-started.md`](./docs/getting-started.md) | Step-by-step setup guide |
+| [`docs/architecture.md`](./docs/architecture.md) | System architecture, Go packages, design decisions |
+| [`docs/agents.md`](./docs/agents.md) | Agent model: types, lifecycle, tools, 5-layer system prompt |
+| [`docs/workspace.md`](./docs/workspace.md) | `.ai-engine/` folder structure and configuration reference |
+| [`docs/api.md`](./docs/api.md) | WebSocket and HTTP API reference |
+| [`docs/frontend.md`](./docs/frontend.md) | Frontend components, hooks, design system |
+| [`docs/chat-log-format.md`](./docs/chat-log-format.md) | JSONL chat log format reference |
+| [`changelog/releases.md`](./changelog/releases.md) | Full version history |

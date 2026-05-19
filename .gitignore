@@ -7,6 +7,8 @@
 # Frontend
 frontend/dist/
 frontend/node_modules/
+src/frontend/node_modules/
+src/backend/frontend-dist/
 
 # Build output
 bin/
