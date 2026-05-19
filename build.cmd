@@ -44,13 +44,13 @@ echo [build] Version: %CURRENT_VERSION% ^-^> %NEW_VERSION%
 
 :: ── Build frontend ────────────────────────────────────────────────────────────
 echo [1/3] Building frontend...
-cd frontend
+cd src\frontend
 call npm run build
 if errorlevel 1 (
     echo [ERROR] Frontend build failed.
     exit /b 1
 )
-cd ..
+cd ..\..
 
 :: ── Prepare output directories ────────────────────────────────────────────────
 set "OUT_DIR=bin\%NEW_VERSION%"
@@ -60,11 +60,13 @@ if not exist "%LATEST_DIR%" mkdir "%LATEST_DIR%"
 
 :: ── Build Go binary ───────────────────────────────────────────────────────────
 echo [2/3] Building Go binary...
-go build -ldflags "-X main.Version=%NEW_VERSION%" -o "%OUT_DIR%\ai-engine.exe" ./cmd/ai-engine
+cd src\backend
+go build -ldflags "-X main.Version=%NEW_VERSION%" -o "..\..\%OUT_DIR%\ai-engine.exe" ./cmd/ai-engine
 if errorlevel 1 (
     echo [ERROR] Go build failed.
     exit /b 1
 )
+cd ..\..
 
 :: ── Copy to latest ────────────────────────────────────────────────────────────
 echo [3/3] Updating bin\latest...

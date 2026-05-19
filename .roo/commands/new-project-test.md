@@ -8,3 +8,4 @@ faça algo diferente dos projetos de teste tradicionais
 use o init do ai-engine
 me mande um prompt para iniciar o projeto pelo ai-engine
 configure a porta para 8080
+crie na pasta C:\Projects\ai-engine\projects
