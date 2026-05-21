@@ -1,0 +1,43 @@
+.new-board-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nbf-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: #1a1a2e;
+  border: 1px solid #2d3748;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.nbf-input:focus { border-color: #7c3aed; }
+.nbf-input::placeholder { color: #64748b; }
+
+.nbf-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.nbf-btn {
+  flex: 1;
+  padding: 0.45rem 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.nbf-btn--primary { background: #7c3aed; color: white; }
+.nbf-btn--primary:hover { background: #6d28d9; }
+.nbf-btn--primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.nbf-btn--secondary { background: #2d3748; color: #94a3b8; }
+.nbf-btn--secondary:hover { background: #374151; }

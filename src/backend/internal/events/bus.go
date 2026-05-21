@@ -17,6 +17,7 @@ const (
 	EventTypeSessionStarted  EventType = "session.started"
 	EventTypeSessionFinished EventType = "session.finished"
 	EventTypeError           EventType = "error"
+	EventTypeWarning         EventType = "warning"
 	EventTypeTasksUpdated    EventType = "tasks.updated"
 )
 

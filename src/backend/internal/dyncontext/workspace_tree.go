@@ -40,7 +40,14 @@ func (WorkspaceTreeProvider) Render(_ context.Context, sb *sandbox.Sandbox) (str
 		return "", nil
 	}
 	var b strings.Builder
-	b.WriteString("## Workspace Tree\n\n```\n")
+	b.WriteString("## Workspace File Tree\n\n" +
+		"This is the complete file and directory structure of your workspace, " +
+		"updated before every LLM turn. Use it to understand the project layout " +
+		"before reading or writing files.\n\n" +
+		"**Do NOT call `list_files` to explore the root or any directory already " +
+		"visible here — the tree below is always up to date.** Only use `list_files` " +
+		"if you need to inspect a specific subdirectory that is truncated or not " +
+		"shown (depth limit: 6 levels).\n\n```\n")
 	for _, l := range lines {
 		b.WriteString(l)
 		b.WriteByte('\n')

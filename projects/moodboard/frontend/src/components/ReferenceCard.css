@@ -1,0 +1,83 @@
+.ref-card {
+  background: #16213e;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ref-card-delete {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  background: rgba(0,0,0,0.55);
+  border: none;
+  color: #e2e8f0;
+  font-size: 1rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ref-card:hover .ref-card-delete { opacity: 1; }
+.ref-card-delete:hover { background: #ef4444; }
+
+.ref-card-image-wrap {
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+}
+
+.ref-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ref-card-swatch {
+  width: 100%;
+  height: 160px;
+}
+
+.ref-card-note {
+  padding: 1rem;
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  line-height: 1.6;
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ref-card-meta {
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ref-card-hex {
+  font-size: 0.8rem;
+  font-family: monospace;
+  color: #94a3b8;
+}
+
+.ref-card-label {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

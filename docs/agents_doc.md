@@ -13,19 +13,20 @@ There are two agent types: **leader** and **executor**. The type is derived auto
 
 ---
 
-## 5-Layer System Prompt
+## 6-Layer System Prompt
 
-Every LLM call composes a system prompt from five layers, assembled in this order:
+Every LLM call composes a system prompt from six layers, assembled in this order:
 
 | Layer | Name | Source | Scope |
 |---|---|---|---|
 | 1 | Engine Context | `.ai-engine/engine_context.md` | All agents |
-| 2 | Agent Role | `.ai-engine/agents/{name}/system_prompt.md` | This agent only |
-| 3 | Team | Auto-generated from `AgentNode.Children` | Leaders only (empty for executors) |
-| 4 | Dynamic Context | Workspace file tree (recomputed per LLM call) | All agents |
-| 5 | Task Context | `.ai-engine/chats/{session-id}/{agent}/task_context.md` | Written by parent leader via `set_task_context` before `create_chat` |
+| 2 | Role Template | `.ai-engine/role_swarmito.md` / `role_leader.md` / `role_executor.md` | Matched by agent type |
+| 3 | Agent Role | `.ai-engine/agents/{name}/system_prompt.md` | This agent only |
+| 4 | Team | Auto-generated from `AgentNode.Children` | Leaders only (empty for executors) |
+| 5 | Dynamic Context | Workspace file tree (recomputed per LLM call) | All agents |
+| 6 | Task Context | `.ai-engine/chats/{session-id}/{agent}/task_context.md` | Written by parent leader via `set_task_context` before `create_chat` |
 
-### Layer 3 — Team section format
+### Layer 4 — Team section format
 
 For leaders, Layer 3 is generated as:
 
@@ -37,13 +38,19 @@ For leaders, Layer 3 is generated as:
 
 The description comes from `agent.json`. If `description` is absent, the agent name is used as the fallback.
 
-Executors receive an empty string for Layer 3.
+Executors receive an empty string for Layer 4.
 
-### Layer 4 — Dynamic Context
+### Layer 5 — Dynamic Context
 
-`WorkspaceTreeProvider` walks the workspace directory tree before every LLM call and injects the current file tree as Markdown. Maximum depth: 6. Ignored directories: `.git`, `node_modules`, `vendor`, `dist`, `build`, `__pycache__`, `.venv`, `venv`, `.ai-engine`.
+Layer 4 is composed by the `dyncontext.Registry`, which runs all enabled providers in order and concatenates their output separated by `---`. Two providers are built in:
 
-### Layer 5 — Task Context
+**`WorkspaceTreeProvider`** (`"workspace_tree"`) — walks the workspace directory tree before every LLM call and injects the current file tree as Markdown. Maximum depth: 6. Ignored directories: `.git`, `node_modules`, `vendor`, `dist`, `build`, `__pycache__`, `.venv`, `venv`, `.ai-engine`. The output includes an explicit instruction not to call `list_files` for directories already visible in the tree.
+
+**`MemoryProvider`** (`"memory"`) — reads all `.md` files from `.ai-engine/memory/` sorted by filename and renders them as a `# Agent Memory` Markdown block. Returns empty string if the directory does not exist or contains no `.md` files. All I/O errors are non-fatal. A file written by `write_memory` in turn N is already present in the system prompt in turn N+1.
+
+Both providers are recomputed before every LLM call. Enabled providers are controlled by `dynamic_context.providers` in `config.json`.
+
+### Layer 6 — Task Context
 
 Written by the parent leader using `set_task_context` before calling `create_chat`. Contains the specific task description and any relevant context for the sub-agent. Stored at `.ai-engine/chats/{session-id}/{agent-name}/task_context.md`.
 
@@ -62,6 +69,9 @@ Written by the parent leader using `set_task_context` before calling `create_cha
 | `list_files` | List files in a directory |
 | `read_file` | Read a file (with optional offset/limit) |
 | `finish_work` | Signal completion and return a result to the parent |
+| `write_memory` | Write or overwrite a Markdown file in `.ai-engine/memory/` |
+| `update_memory` | Apply search/replace blocks to an existing memory file (same format as `apply_diff`) |
+| `delete_memory` | Delete a file from `.ai-engine/memory/` |
 
 ### Executor tools
 
@@ -75,8 +85,44 @@ Written by the parent leader using `set_task_context` before calling `create_cha
 | `search_files` | Search for a regex pattern across files |
 | `delete_file` | Delete a file |
 | `finish_work` | Signal completion and return a result to the parent |
+| `write_memory` | Write or overwrite a Markdown file in `.ai-engine/memory/` |
+| `update_memory` | Apply search/replace blocks to an existing memory file (same format as `apply_diff`) |
+| `delete_memory` | Delete a file from `.ai-engine/memory/` |
 
 Tool access is enforced by `internal/tools.Registry` — executors cannot call leader tools even if the LLM requests them.
+
+---
+
+## Memory
+
+The memory system provides cross-session persistence for agents. All `.md` files in `.ai-engine/memory/` are injected into every agent's system prompt as part of Layer 4 on every LLM turn.
+
+### Memory tools
+
+| Tool | Available to | Description |
+|---|---|---|
+| `write_memory` | Leaders + Executors | Creates or overwrites a `.md` file in `.ai-engine/memory/`. The `filename` must not contain path separators; `.md` is appended automatically if missing. |
+| `update_memory` | Leaders + Executors | Applies one or more search/replace blocks to an existing memory file without rewriting it entirely. Same `diff` format as `apply_diff`. |
+| `delete_memory` | Leaders + Executors | Deletes a file from `.ai-engine/memory/`. Non-fatal if the file does not exist. |
+
+### Memory scope
+
+Memory is **global per workspace** — shared across all agents and all sessions. A file written by `backend-executor` in session A is visible to `frontend-leader` in session B.
+
+### Memory lifecycle
+
+- Memory files persist indefinitely until explicitly deleted via `delete_memory`.
+- The `.ai-engine/memory/` directory is created by `ai-engine init` and also by `write_memory` on first use.
+- To disable memory injection, remove `"memory"` from `dynamic_context.providers` in `config.json`.
+
+### When to use memory
+
+Agents should write to memory when they:
+- Make an architectural decision
+- Establish a project convention (naming, folder structure, tech stack)
+- Discover a non-obvious fact about the codebase
+- Define an API contract, data schema, or interface
+- Complete a significant unit of work
 
 ---
 

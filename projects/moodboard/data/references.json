@@ -1,0 +1,50 @@
+[
+  {
+    "id": "1779372843252001700_3",
+    "boardId": "1779372843252001700_1",
+    "type": "image",
+    "content": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+    "label": "Hero texture",
+    "createdAt": "2026-05-21T14:14:03Z"
+  },
+  {
+    "id": "1779372843252001700_4",
+    "boardId": "1779372843252001700_1",
+    "type": "color",
+    "content": "#F4A261",
+    "label": "Primary orange",
+    "createdAt": "2026-05-21T14:14:03Z"
+  },
+  {
+    "id": "1779372843252001700_5",
+    "boardId": "1779372843252001700_1",
+    "type": "note",
+    "content": "Keep the palette warm and earthy — avoid cold blues.",
+    "label": "Direction note",
+    "createdAt": "2026-05-21T14:14:03Z"
+  },
+  {
+    "id": "1779372843252001700_6",
+    "boardId": "1779372843252001700_2",
+    "type": "image",
+    "content": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800",
+    "label": "Dark code editor",
+    "createdAt": "2026-05-21T14:14:03Z"
+  },
+  {
+    "id": "1779372843252001700_7",
+    "boardId": "1779372843252001700_2",
+    "type": "color",
+    "content": "#1E1E2E",
+    "label": "Background dark",
+    "createdAt": "2026-05-21T14:14:03Z"
+  },
+  {
+    "id": "1779372843252001700_8",
+    "boardId": "1779372843252001700_2",
+    "type": "note",
+    "content": "Use subtle glows instead of hard borders for depth.",
+    "label": "UI principle",
+    "createdAt": "2026-05-21T14:14:03Z"
+  }
+]

@@ -55,6 +55,11 @@ func NewRegistry(
 	r.register(NewSearchFiles(sb))
 	r.register(NewDeleteFile(sb))
 
+	// Register memory tools (available to both leaders and executors).
+	r.register(NewWriteMemory(sb))
+	r.register(NewUpdateMemory(sb))
+	r.register(NewDeleteMemory(sb))
+
 	// Register shared tools.
 	r.register(NewFinishWork())
 
@@ -107,9 +112,9 @@ func (r *Registry) isAllowed(name string) bool {
 	var allowed []string
 	switch r.agentType {
 	case ToolSetLeader:
-		allowed = []string{"create_chat", "create_task_file", "update_task_file", "set_task_context", "list_files", "read_file", "finish_work"}
+		allowed = []string{"create_chat", "create_task_file", "update_task_file", "set_task_context", "list_files", "read_file", "finish_work", "write_memory", "update_memory", "delete_memory"}
 	case ToolSetExecutor:
-		allowed = []string{"run_terminal_command", "list_files", "read_file", "write_file", "apply_diff", "search_files", "delete_file", "finish_work"}
+		allowed = []string{"run_terminal_command", "list_files", "read_file", "write_file", "apply_diff", "search_files", "delete_file", "finish_work", "write_memory", "update_memory", "delete_memory"}
 	default:
 		return true // unknown type — allow all (safe default for tests)
 	}
@@ -123,7 +128,11 @@ func (r *Registry) isAllowed(name string) bool {
 
 // ToolsForLeader returns the tool list available to leader agents.
 func (r *Registry) ToolsForLeader() []Tool {
-	names := []string{"create_chat", "create_task_file", "update_task_file", "set_task_context", "list_files", "read_file", "finish_work"}
+	names := []string{
+		"create_chat", "create_task_file", "update_task_file", "set_task_context",
+		"list_files", "read_file", "finish_work",
+		"write_memory", "update_memory", "delete_memory",
+	}
 	return r.byNames(names)
 }
 
@@ -138,6 +147,9 @@ func (r *Registry) ToolsForExecutor() []Tool {
 		"search_files",
 		"delete_file",
 		"finish_work",
+		"write_memory",
+		"update_memory",
+		"delete_memory",
 	}
 	return r.byNames(names)
 }

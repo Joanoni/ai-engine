@@ -1,0 +1,95 @@
+.sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: #16213e;
+  border-right: 1px solid #2d3748;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.sidebar-header {
+  padding: 1.5rem 1.25rem 1rem;
+  border-bottom: 1px solid #2d3748;
+}
+
+.sidebar-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #7c3aed;
+  letter-spacing: 0.03em;
+}
+
+.sidebar-boards {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 0;
+}
+
+.sidebar-empty {
+  padding: 1rem 1.25rem;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+.board-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1.25rem;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.board-item:hover { background: #1e2a4a; }
+
+.board-item--active {
+  background: #1e2a4a;
+  border-left-color: #7c3aed;
+  color: #a78bfa;
+}
+
+.board-item-name {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.board-item-delete {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.board-item:hover .board-item-delete { opacity: 1; }
+.board-item-delete:hover { color: #ef4444; }
+
+.sidebar-footer {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #2d3748;
+}
+
+.btn-new-board {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  background: #7c3aed;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-new-board:hover { background: #6d28d9; }

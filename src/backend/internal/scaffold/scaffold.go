@@ -10,16 +10,18 @@ import (
 	"path/filepath"
 )
 
-//go:embed templates/engine_context.md templates/swarmito_system_prompt.md templates/swarmito_agent.json
+//go:embed templates/engine_context.md templates/swarmito_system_prompt.md templates/swarmito_agent.json templates/role_swarmito.md templates/role_leader.md templates/role_executor.md
 var templates embed.FS
 
 const configJSON = `{
   "provider": "",
   "default_model": "",
-  "root_agent": "swarmito",
   "port": 8080,
   "max_tool_retries": 3,
-  "max_tool_calls": 50
+  "max_tool_calls": 50,
+  "dynamic_context": {
+    "providers": ["workspace_tree", "memory"]
+  }
 }
 `
 
@@ -59,6 +61,7 @@ func Init(dir string) error {
 	dirs := []string{
 		base,
 		filepath.Join(base, "agents", "swarmito"),
+		filepath.Join(base, "memory"),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -80,9 +83,12 @@ func Init(dir string) error {
 
 	// Files to write from embedded templates.
 	embeddedFiles := map[string]string{
-		filepath.Join(base, "engine_context.md"):                          "templates/engine_context.md",
-		filepath.Join(base, "agents", "swarmito", "system_prompt.md"):     "templates/swarmito_system_prompt.md",
-		filepath.Join(base, "agents", "swarmito", "agent.json"):           "templates/swarmito_agent.json",
+		filepath.Join(base, "engine_context.md"):                      "templates/engine_context.md",
+		filepath.Join(base, "agents", "swarmito", "system_prompt.md"): "templates/swarmito_system_prompt.md",
+		filepath.Join(base, "agents", "swarmito", "agent.json"):       "templates/swarmito_agent.json",
+		filepath.Join(base, "role_swarmito.md"):                       "templates/role_swarmito.md",
+		filepath.Join(base, "role_leader.md"):                         "templates/role_leader.md",
+		filepath.Join(base, "role_executor.md"):                       "templates/role_executor.md",
 	}
 	for dst, src := range embeddedFiles {
 		data, err := templates.ReadFile(src)

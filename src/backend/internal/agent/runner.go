@@ -57,18 +57,24 @@ func NewRunner(a *Agent, provider llm.LLMProvider, toolRegistry *tools.Registry,
 	}
 }
 
-// composeSystemPrompt builds the final 5-layer system prompt:
+// composeSystemPrompt builds the final 6-layer system prompt:
 //
 //	[1] ENGINE CONTEXT   (optional prefix)
-//	[2] AGENT ROLE       (always present)
-//	[3] TEAM             (auto-generated for leaders, empty for executors)
-//	[4] DYNAMIC CONTEXT  (optional, workspace tree)
-//	[5] CURRENT TASK     (optional suffix)
-func composeSystemPrompt(engineCtx, agentRole, teamCtx, dynamicCtx, taskCtx string) string {
+//	[2] ROLE TEMPLATE    (optional, matched by agent type/name)
+//	[3] AGENT ROLE       (always present)
+//	[4] TEAM             (auto-generated for leaders, empty for executors)
+//	[5] DYNAMIC CONTEXT  (optional, workspace tree)
+//	[6] CURRENT TASK     (optional suffix)
+func composeSystemPrompt(engineCtx, roleTemplate, agentRole, teamCtx, dynamicCtx, taskCtx string) string {
 	var b strings.Builder
 
 	if engineCtx != "" {
 		b.WriteString(engineCtx)
+		b.WriteString("\n\n---\n\n")
+	}
+
+	if roleTemplate != "" {
+		b.WriteString(roleTemplate)
 		b.WriteString("\n\n---\n\n")
 	}
 
@@ -201,8 +207,8 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 			dynamicCtx = r.dynCtxRegistry.RenderAll(ctx, r.sb)
 		}
 
-		// Compose the 5-layer system prompt on every LLM call.
-		systemPrompt := composeSystemPrompt(r.engineContext, r.agent.Definition.SystemPrompt, teamCtx, dynamicCtx, r.agent.Definition.TaskContext)
+		// Compose the 6-layer system prompt on every LLM call.
+		systemPrompt := composeSystemPrompt(r.engineContext, r.agent.RoleTemplate, r.agent.Definition.SystemPrompt, teamCtx, dynamicCtx, r.agent.Definition.TaskContext)
 
 		// Log the full LLM request before sending.
 		msgs := r.chat.Messages()
@@ -214,6 +220,7 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 			SystemPrompt: systemPrompt,
 			SystemLayers: &chatlog.SystemLayers{
 				EngineContext:  r.engineContext,
+				RoleTemplate:   r.agent.RoleTemplate,
 				AgentRole:      r.agent.Definition.SystemPrompt,
 				TeamContext:    teamCtx,
 				DynamicContext: dynamicCtx,
@@ -379,52 +386,53 @@ func (r *Runner) Run(ctx context.Context, userMessage string) (string, error) {
 			}
 
 			if execErr != nil {
-				// Publish error event for frontend observability.
-				r.bus.Publish(events.Event{
-					Type:      events.EventTypeError,
-					SessionID: sessionID,
-					AgentName: agentName,
-					Payload:   map[string]string{"error": execErr.Error(), "tool": call.Name},
-				})
-
-				// Log the failure.
-				failure := false
-				r.logger.WriteEntry(chatlog.LogEntry{
-					Timestamp:  time.Now().UTC().Format(time.RFC3339),
-					Turn:       turn,
-					Role:       "tool_result",
-					ToolUseID:  call.ID,
-					Tool:       call.Name,
-					Success:    &failure,
-					Output:     execErr.Error(),
-					DurationMs: durationMs,
-				})
-				r.logger.WriteEntry(chatlog.LogEntry{
-					Timestamp: time.Now().UTC().Format(time.RFC3339),
-					Turn:      turn,
-					Role:      "error",
-					Tool:      call.Name,
-					Message:   execErr.Error(),
-				})
-
-				// Feed the error back to the agent as a tool result.
-				toolResults = append(toolResults, llm.ToolResult{
-					ToolUseID: call.ID,
-					Content:   fmt.Sprintf("Tool error: %s", execErr.Error()),
-					IsError:   true,
-				})
-
-				consecutiveErrors++
-				lastFailedTool = call.Name
-				lastExecErr = execErr
-				if consecutiveErrors >= r.maxToolRetries {
-					// Mark limit exceeded but do NOT return yet — continue
-					// processing remaining tool calls to collect all results.
-					retryLimitExceeded = true
+					// Publish a warning event — tool errors are non-fatal and the
+					// agent can inspect the result and retry with a corrected call.
+					r.bus.Publish(events.Event{
+						Type:      events.EventTypeWarning,
+						SessionID: sessionID,
+						AgentName: agentName,
+						Payload:   map[string]string{"warning": execErr.Error(), "tool": call.Name},
+					})
+	
+					// Log the failure.
+					failure := false
+					r.logger.WriteEntry(chatlog.LogEntry{
+						Timestamp:  time.Now().UTC().Format(time.RFC3339),
+						Turn:       turn,
+						Role:       "tool_result",
+						ToolUseID:  call.ID,
+						Tool:       call.Name,
+						Success:    &failure,
+						Output:     execErr.Error(),
+						DurationMs: durationMs,
+					})
+					r.logger.WriteEntry(chatlog.LogEntry{
+						Timestamp: time.Now().UTC().Format(time.RFC3339),
+						Turn:      turn,
+						Role:      "warning",
+						Tool:      call.Name,
+						Message:   execErr.Error(),
+					})
+	
+					// Feed the error back to the agent as a tool result.
+					toolResults = append(toolResults, llm.ToolResult{
+						ToolUseID: call.ID,
+						Content:   fmt.Sprintf("Tool error: %s", execErr.Error()),
+						IsError:   true,
+					})
+	
+					consecutiveErrors++
+					lastFailedTool = call.Name
+					lastExecErr = execErr
+					if consecutiveErrors >= r.maxToolRetries {
+						// Mark limit exceeded but do NOT return yet — continue
+						// processing remaining tool calls to collect all results.
+						retryLimitExceeded = true
+					}
+					// Do NOT break — continue processing remaining tool calls in this batch.
+					continue
 				}
-				// Do NOT break — continue processing remaining tool calls in this batch.
-				continue
-			}
 
 			// Tool succeeded — reset consecutive error counter.
 			consecutiveErrors = 0

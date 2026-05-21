@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.0.31] — 2026-05-20
+
+### Added — Agent Memory System
+
+A persistent cross-session memory system for agents. All `.md` files in `.ai-engine/memory/` are injected into every agent's system prompt as part of Layer 4 dynamic context, recomputed live before every LLM call. A file written in turn N is already present in the system prompt in turn N+1.
+
+#### New files
+
+- [`internal/dyncontext/memory_provider.go`](../src/backend/internal/dyncontext/memory_provider.go) — `MemoryProvider` (`Name: "memory"`): walks `.ai-engine/memory/`, reads all `.md` files sorted by filename, renders them as a `# Agent Memory` Markdown block. Returns empty string if the directory does not exist or contains no `.md` files. All I/O errors are non-fatal (logged to stderr).
+- [`internal/tools/memory_write.go`](../src/backend/internal/tools/memory_write.go) — `write_memory` tool: creates or overwrites a `.md` file in `.ai-engine/memory/`. Rejects path traversal (filename must not contain `/`, `\`, or `..`). Appends `.md` extension automatically if missing. Creates the directory on first use.
+- [`internal/tools/memory_patch.go`](../src/backend/internal/tools/memory_patch.go) — `update_memory` tool: applies one or more search/replace blocks to an existing memory file without rewriting it entirely. Same `diff` format as `apply_diff` (first-occurrence replacement per block).
+- [`internal/tools/memory_delete.go`](../src/backend/internal/tools/memory_delete.go) — `delete_memory` tool: deletes a file from `.ai-engine/memory/`. Non-fatal if the file does not exist.
+
+#### Modified files
+
+- [`internal/tools/registry.go`](../src/backend/internal/tools/registry.go) — `write_memory`, `update_memory`, `delete_memory` registered in `NewRegistry()`, `isAllowed()`, `ToolsForLeader()`, and `ToolsForExecutor()` — all three tools are available to both leaders and executors.
+- [`internal/server/server.go`](../src/backend/internal/server/server.go) — `NewMemoryProvider()` added to the `allProviders` slice alongside `WorkspaceTreeProvider`.
+- [`internal/scaffold/scaffold.go`](../src/backend/internal/scaffold/scaffold.go) — `ai-engine init` now creates `.ai-engine/memory/` directory; scaffolded `config.json` includes `"memory"` in `dynamic_context.providers`.
+- [`internal/scaffold/templates/engine_context.md`](../src/backend/internal/scaffold/templates/engine_context.md) — Added `write_memory`, `update_memory`, `delete_memory` to both Leader and Executor tool tables. Added `## Agent Memory — Use It Aggressively` section with directive language (MUST, always, never) explaining when and why to use memory. Updated the stateless rule to: *"Agents are stateless between sessions — unless you use memory."*
+
+#### Memory scope
+
+- Memory is **global per workspace** — shared across all agents and all sessions.
+- Controlled by `dynamic_context.providers` in `config.json` — add `"memory"` to enable (included by default in new workspaces).
+- Memory files persist indefinitely until explicitly deleted via `delete_memory`.
+
+---
+
+## [0.0.30] — 2026-05-20
+
+### Changed — Workspace Tree provider output improved
+
+- [`internal/dyncontext/workspace_tree.go`](../src/backend/internal/dyncontext/workspace_tree.go) — The `## Workspace Tree` header was replaced with `## Workspace File Tree` and now includes an explanatory paragraph and an explicit instruction: **do NOT call `list_files` for directories already visible in the tree** — the tree is always up to date. `list_files` is only needed for subdirectories beyond the 6-level depth limit.
+
+---
+
 ## [0.0.27] — 2026-05-19
 
 ### Changed — Source code reorganized into `src/`

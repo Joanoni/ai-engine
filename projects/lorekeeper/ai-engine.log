@@ -1,0 +1,9 @@
+AI Engine starting
+  Workspace : C:\Projects\ai-engine\projects\lorekeeper
+  Provider  : anthropic
+  Model     : claude-sonnet-4-6
+  Root agent: swarmito
+  Port      : 8080
+  Version   : 0.0.31
+2026/05/20 11:40:49 server: listening on :8080
+2026/05/20 11:42:20 server: new WebSocket connection from [::1]:64812

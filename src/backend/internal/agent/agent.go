@@ -12,8 +12,9 @@ const (
 
 // Agent represents a running agent instance bound to a session.
 type Agent struct {
-	Definition *registry.AgentNode
-	SessionID  string
+	Definition   *registry.AgentNode
+	SessionID    string
+	RoleTemplate string
 }
 
 // New creates a new Agent from a node and session ID.

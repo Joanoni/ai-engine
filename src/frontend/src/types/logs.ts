@@ -36,7 +36,7 @@ export interface ToolLog {
 export interface LogEntry {
   ts: string;
   turn: number;
-  role: 'agent_init' | 'user' | 'llm_request' | 'llm_response' | 'tool_result' | 'error' | 'finish';
+  role: 'agent_init' | 'user' | 'llm_request' | 'llm_response' | 'tool_result' | 'warning' | 'error' | 'finish';
 
   // agent_init
   agent_name?: string;

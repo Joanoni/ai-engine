@@ -48,7 +48,6 @@ Open `.ai-engine/config.json`. The scaffolded default looks like:
 {
   "provider": "anthropic",
   "default_model": "claude-sonnet-4-6",
-  "root_agent": "swarmito",
   "port": 8080,
   "max_tool_retries": 3,
   "max_tool_calls": 50,

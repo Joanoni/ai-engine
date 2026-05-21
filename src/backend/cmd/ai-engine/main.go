@@ -106,7 +106,6 @@ func runServer(workspacePath string) {
 	fmt.Printf("  Workspace : %s\n", workspacePath)
 	fmt.Printf("  Provider  : %s\n", cfg.Provider)
 	fmt.Printf("  Model     : %s\n", cfg.DefaultModel)
-	fmt.Printf("  Root agent: %s\n", cfg.RootAgent)
 	fmt.Printf("  Port      : %d\n", cfg.Port)
 	fmt.Printf("  Version   : %s\n", Version)
 

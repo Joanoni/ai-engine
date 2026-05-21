@@ -6,6 +6,7 @@ export type EventType =
   | 'tool.called'
   | 'tool.result'
   | 'tasks.updated'
+  | 'warning'
   | 'error';
 
 export interface EngineEvent {

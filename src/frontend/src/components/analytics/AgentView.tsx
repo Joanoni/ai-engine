@@ -43,7 +43,7 @@ interface TurnGroup {
 function groupByTurn(logs: LogEntry[]): TurnGroup[] {
   const map = new Map<number, TurnGroup>();
   for (const entry of logs) {
-    if (entry.role === 'agent_init' || entry.role === 'user' || entry.role === 'finish' || entry.role === 'error') continue;
+    if (entry.role === 'agent_init' || entry.role === 'user' || entry.role === 'finish' || entry.role === 'error' || entry.role === 'warning') continue;
     const t = entry.turn;
     if (!map.has(t)) map.set(t, { turn: t, llmRequest: null, llmResponse: null, toolResults: [] });
     const group = map.get(t)!;
