@@ -215,6 +215,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			// Build the dynamic context registry (Layer 4 of the system prompt).
 			allProviders := []dyncontext.DynamicContextProvider{
 				dyncontext.WorkspaceTreeProvider{},
+				dyncontext.NewMemoryProvider(),
 			}
 			dynCtxReg := dyncontext.NewRegistry(allProviders, cfg.DynamicContext.Providers)
 
@@ -270,13 +271,20 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			defer s.bus.Unsubscribe(forwardID)
 
 			// Load the agent tree (hot-reload per session).
-			rootNode, err := s.reg.LoadTree(cfg.RootAgent)
+			rootNode, err := s.reg.LoadTree()
 			if err != nil {
 				s.sendError(writeCh, sess.ID, fmt.Sprintf("failed to load agent tree: %v", err))
 				continue
 			}
 			if rootNode.Model == "" {
 				rootNode.Model = cfg.DefaultModel
+			}
+
+			// Load role template for the root agent.
+			rootRoleTemplate, err := s.reg.LoadRoleTemplate(rootNode.Type, rootNode.Name)
+			if err != nil {
+				s.sendError(writeCh, sess.ID, fmt.Sprintf("failed to load role template: %v", err))
+				continue
 			}
 
 			// Build the SubAgentRunner factory (closes over server deps).
@@ -288,6 +296,11 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				if node.Model == "" {
 					node.Model = defaultModel
 				}
+				// Load role template for this sub-agent.
+				roleTemplate, rtErr := s.reg.LoadRoleTemplate(node.Type, node.Name)
+				if rtErr != nil {
+					return "", fmt.Errorf("failed to load role template for %q: %w", node.Name, rtErr)
+				}
 				// Map agent node type to the appropriate tool set.
 				subToolSet := tools.ToolSetExecutor
 				if node.Type == registry.AgentTypeLeader {
@@ -295,6 +308,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				}
 				subToolReg := tools.NewRegistry(s.sb, nil, s.bus, node, runAgent, sessionID, subToolSet, node.Name)
 				subAgentInst := agent.New(node, sessionID)
+				subAgentInst.RoleTemplate = roleTemplate
 				subRunner := agent.NewRunner(subAgentInst, s.provider, subToolReg, s.bus, engineContext, s.sb, maxRetries, maxToolCalls, s.tokenStore, dynCtxReg)
 				return subRunner.Run(ctx, message)
 			}
@@ -304,6 +318,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 			// Create the root agent instance and runner.
 			rootAgent := agent.New(rootNode, sess.ID)
+			rootAgent.RoleTemplate = rootRoleTemplate
 			runner := agent.NewRunner(rootAgent, s.provider, toolReg, s.bus, engineContext, s.sb, maxRetries, maxToolCalls, s.tokenStore, dynCtxReg)
 
 			// Run the agent in a goroutine so we can keep reading from the socket.
@@ -346,14 +361,14 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	cfg, err := config.Load(s.sb.WorkspacePath())
+	_, err := config.Load(s.sb.WorkspacePath())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to load config: %v", err)})
 		return
 	}
 
-	agents, err := s.reg.LoadAgentTree(cfg.RootAgent)
+	agents, err := s.reg.LoadAgentTree()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to load agent tree: %v", err)})

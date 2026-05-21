@@ -1,0 +1,41 @@
+.add-ref-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.arf-select,
+.arf-input {
+  padding: 0.55rem 0.75rem;
+  background: #16213e;
+  border: 1px solid #2d3748;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.arf-select:focus,
+.arf-input:focus { border-color: #7c3aed; }
+
+.arf-select { min-width: 90px; cursor: pointer; }
+.arf-input { flex: 1; min-width: 140px; }
+.arf-input::placeholder { color: #64748b; }
+
+.arf-btn {
+  padding: 0.55rem 1.25rem;
+  background: #7c3aed;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.arf-btn:hover { background: #6d28d9; }
+.arf-btn:disabled { opacity: 0.6; cursor: not-allowed; }

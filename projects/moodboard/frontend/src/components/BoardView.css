@@ -1,0 +1,44 @@
+.board-view {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 4rem);
+}
+
+.board-header {
+  margin-bottom: 1.5rem;
+}
+
+.board-name {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.board-description {
+  margin-top: 0.35rem;
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.refs-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 0.95rem;
+  padding: 3rem 0;
+}
+
+.refs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.board-form-bar {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid #2d3748;
+}

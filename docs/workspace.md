@@ -10,6 +10,9 @@ The workspace is the directory where you run `ai-engine`. All engine state lives
 ├── config.json                     ← engine configuration
 ├── model-pricing.json              ← token cost table per model
 ├── engine_context.md               ← Layer 1: shared instructions for all agents
+├── role_swarmito.md                ← Layer 2: role template for the root orchestrator
+├── role_leader.md                  ← Layer 2: role template for leader agents
+├── role_executor.md                ← Layer 2: role template for executor agents
 │
 ├── agents/                         ← agent definitions (filesystem = hierarchy)
 │   └── swarmito/
@@ -26,6 +29,9 @@ The workspace is the directory where you run `ai-engine`. All engine state lives
 │           ├── system_prompt.md
 │           └── frontend-executor/
 │               └── system_prompt.md
+│
+├── memory/                         ← persistent agent memory (injected into all agent prompts)
+│   └── *.md
 │
 ├── sessions/                       ← runtime: session persistence
 │   └── {session-id}/
@@ -56,11 +62,10 @@ Full field reference:
 |---|---|---|---|
 | `provider` | string | yes | LLM provider. Currently only `"anthropic"` is supported. |
 | `default_model` | string | yes | Model name used by agents that do not specify their own `model` in `agent.json`. Example: `"claude-sonnet-4-6"`. |
-| `root_agent` | string | yes | Name of the root agent directory under `.ai-engine/agents/`. Must match the directory name exactly. |
 | `port` | number | yes | HTTP/WebSocket server port. Default: `8080`. |
 | `max_tool_retries` | number | no | Maximum consecutive tool errors before the session terminates. Default: `3`. |
 | `max_tool_calls` | number | no | Maximum total tool calls across the entire session before termination. Default: `50`. |
-| `dynamic_context.providers` | string[] | no | List of dynamic context provider names to enable. Currently only `"workspace_tree"` is supported. |
+| `dynamic_context.providers` | string[] | no | List of dynamic context provider names to enable. Supported values: `"workspace_tree"`, `"memory"`. |
 
 Example:
 
@@ -68,15 +73,26 @@ Example:
 {
   "provider": "anthropic",
   "default_model": "claude-sonnet-4-6",
-  "root_agent": "swarmito",
   "port": 8080,
   "max_tool_retries": 3,
   "max_tool_calls": 50,
   "dynamic_context": {
-    "providers": ["workspace_tree"]
+    "providers": ["workspace_tree", "memory"]
   }
 }
 ```
+
+---
+
+## `memory/`
+
+All `.md` files placed in `.ai-engine/memory/` are injected into every agent's system prompt as Layer 4 dynamic context. The content is recomputed live before every LLM call — a file written in turn N is already present in turn N+1.
+
+- Files are sorted alphabetically by filename and rendered as a `# Agent Memory` Markdown block.
+- Memory is **global per workspace** — shared across all agents and sessions.
+- Managed via the `write_memory`, `update_memory`, and `delete_memory` tools.
+- The directory is created automatically by `ai-engine init` and by `write_memory` on first use.
+- To disable memory injection, remove `"memory"` from `dynamic_context.providers` in `config.json`.
 
 ---
 
@@ -133,9 +149,23 @@ If a model is not found in the pricing map, `CalcCost` returns `0` and logs a wa
 
 ---
 
+## Role Template Files
+
+Three role template files provide generic behavioral guidelines injected as Layer 2 of the system prompt, before the agent-specific `system_prompt.md`:
+
+| File | Applied to |
+|---|---|
+| `role_swarmito.md` | The root orchestrator (`swarmito`) |
+| `role_leader.md` | Any agent whose directory contains child agents (leaders) |
+| `role_executor.md` | Any agent with no child agents (executors) |
+
+These files are created by `ai-engine init` and can be customised per workspace. If a file does not exist, the layer is silently skipped.
+
+---
+
 ## `system_prompt.md`
 
-Each agent's `system_prompt.md` defines its role (Layer 2 of the system prompt). There is no enforced schema — write it as plain Markdown. Recommended structure:
+Each agent's `system_prompt.md` defines its role (Layer 3 of the system prompt). There is no enforced schema — write it as plain Markdown. Recommended structure:
 
 ```markdown
 # Role
@@ -153,7 +183,7 @@ You are [agent name], responsible for [responsibility].
 - [guideline 2]
 ```
 
-Keep it focused on the agent's specific domain. The engine automatically injects the team roster (Layer 3), workspace file tree (Layer 4), and task context (Layer 5) — you do not need to describe those in `system_prompt.md`.
+Keep it focused on the agent's specific domain. The engine automatically injects the role template (Layer 2), team roster (Layer 4), workspace file tree (Layer 5), and task context (Layer 6) — you do not need to describe those in `system_prompt.md`.
 
 ---
 

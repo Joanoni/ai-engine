@@ -10,11 +10,17 @@ frontend/node_modules/
 src/frontend/node_modules/
 src/backend/frontend-dist/
 
+# Example projects — ignore generated/dependency dirs
+projects/**/node_modules/
+projects/**/dist/
+projects/**/.ai-engine/
+projects/**/*.exe
+
 # Build output
 bin/
 
 # Example workspaces (not committed)
-projects/
+# projects/
 
 # Personal folder
 00_caio/

@@ -18,7 +18,6 @@ type DynamicContextConfig struct {
 type Config struct {
 	Provider       string               `json:"provider"`
 	DefaultModel   string               `json:"default_model"`
-	RootAgent      string               `json:"root_agent"`
 	Port           int                  `json:"port"`
 	MaxToolRetries int                  `json:"max_tool_retries"`
 	MaxToolCalls   int                  `json:"max_tool_calls"`
@@ -57,9 +56,6 @@ func Load(workspacePath string) (*Config, error) {
 	}
 	if cfg.DefaultModel == "" {
 		return nil, fmt.Errorf("config: 'default_model' is required in config.json (e.g., \"claude-sonnet-4-6\")")
-	}
-	if cfg.RootAgent == "" {
-		return nil, fmt.Errorf("config: 'root_agent' is required in config.json (e.g., \"swarmito\")")
 	}
 
 	return &cfg, nil

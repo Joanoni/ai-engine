@@ -58,10 +58,11 @@ type LogEntry struct {
 // SystemLayers holds each layer of the composed system prompt individually.
 type SystemLayers struct {
 	EngineContext  string `json:"engine_context,omitempty"`  // Layer 1
-	AgentRole      string `json:"agent_role,omitempty"`      // Layer 2
-	TeamContext    string `json:"team_context,omitempty"`    // Layer 3
-	DynamicContext string `json:"dynamic_context,omitempty"` // Layer 4
-	TaskContext    string `json:"task_context,omitempty"`    // Layer 5
+	RoleTemplate   string `json:"role_template,omitempty"`   // Layer 2
+	AgentRole      string `json:"agent_role,omitempty"`      // Layer 3
+	TeamContext    string `json:"team_context,omitempty"`    // Layer 4
+	DynamicContext string `json:"dynamic_context,omitempty"` // Layer 5
+	TaskContext    string `json:"task_context,omitempty"`    // Layer 6
 }
 
 // MessageLog is a serializable snapshot of a single message in the conversation history.

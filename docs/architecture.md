@@ -29,7 +29,7 @@ Browser
 ┌─────────────────────────────────────────────────────┐
 │  internal/agent  (Runner)                           │
 │                                                     │
-│  5-layer system prompt composition                  │
+│  6-layer system prompt composition                  │
 │  Tool dispatch loop                                 │
 │  Token tracking + nudge limit                       │
 │                                                     │
@@ -58,16 +58,17 @@ Entry point. Parses the subcommand (`init` or none), resolves the workspace path
 
 ### `internal/config`
 
-Loads `.ai-engine/config.json` and `.ai-engine/.env`. The `.env` parser strips surrounding single/double quotes from values. Validates that `provider`, `default_model`, and `root_agent` are non-empty. Config is re-read on every session start (hot-reload) — no restart required after editing `.ai-engine/`.
+Loads `.ai-engine/config.json` and `.ai-engine/.env`. The `.env` parser strips surrounding single/double quotes from values. Validates that `provider` and `default_model` are non-empty. Config is re-read on every session start (hot-reload) — no restart required after editing `.ai-engine/`.
 
 ### `internal/registry`
 
 Builds the in-memory `AgentNode` tree from the filesystem. Key functions:
 
-- `LoadTree(rootName) (*AgentNode, error)` — recursively walks `.ai-engine/agents/{rootName}/`, reads `agent.json` (optional), and builds the full tree. A directory with subdirectories containing `system_prompt.md` becomes a leader node; without such subdirectories it becomes an executor node.
+- `LoadTree() (*AgentNode, error)` — recursively walks `.ai-engine/agents/swarmito/`, reads `agent.json` (optional), and builds the full tree. A directory with subdirectories containing `system_prompt.md` becomes a leader node; without such subdirectories it becomes an executor node.
 - `FindNode(root *AgentNode, name string) *AgentNode` — BFS search by agent name.
-- `LoadAgentTree(rootName) ([]AgentTreeNode, error)` — returns a flat list of all nodes for the `/agents` HTTP endpoint.
+- `LoadAgentTree() ([]AgentTreeNode, error)` — returns a flat list of all nodes for the `/agents` HTTP endpoint.
 - `LoadEngineContext() (string, error)` — reads `.ai-engine/engine_context.md`.
+- `LoadRoleTemplate(agentType, agentName) (string, error)` — reads the appropriate `role_swarmito.md`, `role_leader.md`, or `role_executor.md` from `.ai-engine/`. Returns `("", nil)` if the file does not exist.
 
 ### `internal/llm`
 
@@ -79,8 +80,8 @@ Implements `LLMProvider` for the Anthropic Messages API. Uses `MaxOutputTokens` 
 
 ### `internal/agent`
 
-- `Agent` struct — holds the `*registry.AgentNode`, session ID, workspace path, LLM provider, tool registry, sandbox, chatlog logger, event bus, and token store.
-- `Runner` — the execution loop. On each turn: composes the 5-layer system prompt, calls `provider.Send()`, dispatches all tool calls in the response as a batch, collects all results before any termination check, then checks retry/finish conditions. Tracks `consecutiveErrors`, `consecutiveNudges`, and `totalToolCalls`.
+- `Agent` struct — holds the `*registry.AgentNode`, session ID, `RoleTemplate` string, and associated runtime dependencies.
+- `Runner` — the execution loop. On each turn: composes the 6-layer system prompt, calls `provider.Send()`, dispatches all tool calls in the response as a batch, collects all results before any termination check, then checks retry/finish conditions. Tracks `consecutiveErrors`, `consecutiveNudges`, and `totalToolCalls`.
 
 ### `internal/chatlog`
 
@@ -88,7 +89,12 @@ JSONL logger. One file per agent per session at `.ai-engine/logs/{session}/{agen
 
 ### `internal/dyncontext`
 
-Defines the `DynamicContextProvider` interface. `WorkspaceTreeProvider` implements it: walks the workspace directory tree (max depth 6), ignores `.git`, `node_modules`, `vendor`, `dist`, `build`, `__pycache__`, `.venv`, `venv`, `.ai-engine`, and returns a Markdown-formatted file tree. Recomputed before every LLM call.
+Defines the `DynamicContextProvider` interface. Two providers are built in:
+
+- **`WorkspaceTreeProvider`** — walks the workspace directory tree (max depth 6), ignores `.git`, `node_modules`, `vendor`, `dist`, `build`, `__pycache__`, `.venv`, `venv`, `.ai-engine`, and returns a Markdown-formatted file tree.
+- **`MemoryProvider`** — reads all `.md` files from `.ai-engine/memory/` sorted by filename and renders them as a `# Agent Memory` Markdown block. Returns empty string if the directory does not exist or contains no `.md` files. All I/O errors are non-fatal (logged to stderr, empty string returned).
+
+Both providers are recomputed before every LLM call (live recomputation). The `Registry` filters providers by the `dynamic_context.providers` list in `config.json`; if the list is empty, all providers are enabled.
 
 ### `internal/pricing`
 
@@ -112,9 +118,9 @@ The `events.jsonl` file handle is opened at `StartSession` and kept open for the
 
 Defines the `Tool` interface (`Name()`, `Description()`, `InputSchema()`, `Execute(ctx, input)`). All tool implementations live here. `Registry` maps tool names to handlers and enforces the leader/executor tool sets — executors cannot call leader tools even if the LLM requests them.
 
-**Leader tools:** `create_chat`, `set_task_context`, `create_task_file`, `update_task_file`, `list_files`, `read_file`, `finish_work`
+**Leader tools:** `create_chat`, `set_task_context`, `create_task_file`, `update_task_file`, `list_files`, `read_file`, `finish_work`, `write_memory`, `update_memory`, `delete_memory`
 
-**Executor tools:** `run_terminal_command`, `list_files`, `read_file`, `write_file`, `apply_diff`, `search_files`, `delete_file`, `finish_work`
+**Executor tools:** `run_terminal_command`, `list_files`, `read_file`, `write_file`, `apply_diff`, `search_files`, `delete_file`, `finish_work`, `write_memory`, `update_memory`, `delete_memory`
 
 ### `internal/sandbox`
 
@@ -168,9 +174,9 @@ The `LLMProvider` interface decouples the agent runner from any specific LLM API
 
 Leaders process sub-agents sequentially (one `create_chat` at a time). There is no parallel agent execution in V1.
 
-### 6. 5-layer system prompt
+### 6. 6-layer system prompt
 
-Every LLM call composes a system prompt from five layers in order. See [`docs/agents.md`](./agents.md) for the full layer specification.
+Every LLM call composes a system prompt from six layers in order. See [`docs/agents.md`](./agents.md) for the full layer specification.
 
 ### 7. Persistent shell per agent
 

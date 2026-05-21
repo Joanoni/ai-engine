@@ -12,6 +12,7 @@ const typeColors: Record<string, string> = {
   'tool.called':      'var(--warning)',
   'tool.result':      'var(--warning)',
   'tasks.updated':    '#2dd4bf',
+  'warning':          '#f0a500',
   'error':            'var(--error)',
 };
 
@@ -23,6 +24,7 @@ const typeLabels: Record<string, string> = {
   'tool.called':      'TOOL   ',
   'tool.result':      'RESULT ',
   'tasks.updated':    'TASKS  ',
+  'warning':          'WARN   ',
   'error':            'ERROR  ',
 };
 
@@ -57,6 +59,8 @@ function buildMessage(event: EngineEvent): string {
       return `${p.call_id ? `[${p.call_id}] ` : ''}${String(p.result ?? '').slice(0, 100)}`;
     case 'tasks.updated':
       return String(p.content ?? '').replace(/\n/g, ' ').slice(0, 100);
+    case 'warning':
+      return String(p.warning ?? p.message ?? 'Unknown warning').slice(0, 100);
     case 'error':
       return String(p.message ?? p.error ?? 'Unknown error').slice(0, 100);
     default:

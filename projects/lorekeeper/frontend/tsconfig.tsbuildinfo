@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/api/index.ts","./src/components/characterpanel.tsx","./src/components/entitycard.tsx","./src/components/eventpanel.tsx","./src/components/factionpanel.tsx","./src/components/graphpanel.tsx","./src/components/locationpanel.tsx","./src/components/navbar.tsx","./src/components/sidebar.tsx","./src/types/index.ts"],"version":"5.9.3"}

@@ -15,6 +15,9 @@ const (
 	AgentTypeExecutor AgentType = "executor"
 )
 
+// RootAgentName is the hardcoded name of the root agent directory.
+const RootAgentName = "swarmito"
+
 // agentJSON is the optional on-disk format for agent.json.
 // Only description and model are used; name/type/team are ignored for backward compat.
 type agentJSON struct {
@@ -45,11 +48,11 @@ func New(workspacePath string) *Registry {
 	return &Registry{workspacePath: workspacePath}
 }
 
-// LoadTree reads the agent tree recursively from .ai-engine/agents/{rootName}/.
+// LoadTree reads the agent tree recursively from .ai-engine/agents/swarmito/.
 // Returns the root AgentNode with the full tree populated.
-func (r *Registry) LoadTree(rootName string) (*AgentNode, error) {
-	rootDir := filepath.Join(r.workspacePath, ".ai-engine", "agents", rootName)
-	return loadNode(rootDir, rootName, nil)
+func (r *Registry) LoadTree() (*AgentNode, error) {
+	rootDir := filepath.Join(r.workspacePath, ".ai-engine", "agents", RootAgentName)
+	return loadNode(rootDir, RootAgentName, nil)
 }
 
 // loadNode recursively loads an AgentNode from the given directory.
@@ -155,8 +158,8 @@ type AgentTreeNode struct {
 
 // LoadAgentTree builds the in-memory tree via LoadTree and returns a flat list
 // of AgentTreeNode for the /agents HTTP endpoint. Frontend depends on this format.
-func (r *Registry) LoadAgentTree(rootName string) ([]AgentTreeNode, error) {
-	root, err := r.LoadTree(rootName)
+func (r *Registry) LoadAgentTree() ([]AgentTreeNode, error) {
+	root, err := r.LoadTree()
 	if err != nil {
 		return nil, fmt.Errorf("registry: LoadAgentTree failed: %w", err)
 	}
@@ -180,4 +183,26 @@ func (r *Registry) LoadAgentTree(rootName string) ([]AgentTreeNode, error) {
 	walk(root)
 
 	return result, nil
+}
+
+// LoadRoleTemplate reads the appropriate role template file from .ai-engine/
+// based on the agent type and name. Returns ("", nil) if the file does not exist.
+func (r *Registry) LoadRoleTemplate(agentType AgentType, agentName string) (string, error) {
+	var filename string
+	if agentName == RootAgentName {
+		filename = "role_swarmito.md"
+	} else if agentType == AgentTypeLeader {
+		filename = "role_leader.md"
+	} else {
+		filename = "role_executor.md"
+	}
+	path := filepath.Join(r.workspacePath, ".ai-engine", filename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("registry: failed to read role template %q: %w", filename, err)
+	}
+	return string(data), nil
 }

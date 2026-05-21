@@ -57,7 +57,7 @@ The engine also reads `ANTHROPIC_API_KEY` from the system environment. All other
 |---|---|
 | [`docs/getting-started.md`](./docs/getting-started.md) | Step-by-step setup guide |
 | [`docs/architecture.md`](./docs/architecture.md) | System architecture, Go packages, design decisions |
-| [`docs/agents.md`](./docs/agents.md) | Agent model: types, lifecycle, tools, 5-layer system prompt |
+| [`docs/agents_doc.md`](./docs/agents_doc.md) | Agent model: types, lifecycle, tools, 5-layer system prompt |
 | [`docs/workspace.md`](./docs/workspace.md) | `.ai-engine/` folder structure and configuration reference |
 | [`docs/api.md`](./docs/api.md) | WebSocket and HTTP API reference |
 | [`docs/frontend.md`](./docs/frontend.md) | Frontend components, hooks, design system |
